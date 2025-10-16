@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_screen.dart';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,17 +44,17 @@ class _LoginScreenState extends State<LoginScreen> {
           email: email,
           password: password,
         );
-        // 💡 SOLUCIÓN: Verificar si el widget sigue montado antes de usar 'context'
-        if (!mounted) return;
 
-        // Si tiene éxito, navega a la siguiente pantalla (e.g., HomeScreen)
-        // Reemplaza esto con la navegación real de tu app
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) =>
-                const PlaceholderScreen(title: "Bienvenido a StudyMatch"),
-          ),
-        );
+        // 💡 CORRECCIÓN CRÍTICA: Redirección forzada e inmediata
+        // Navega a HomeScreen y ELIMINA todas las rutas anteriores
+        // para que la pantalla de Login no se quede "atascada".
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (Route<dynamic> route) =>
+                false, // Esto borra toda la pila de navegación
+          );
+        }
       } on FirebaseAuthException catch (e) {
         // 3. Manejar errores de Firebase
         String message;
@@ -176,55 +177,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// Pantalla temporal para demostrar el éxito
-class PlaceholderScreen extends StatefulWidget {
-  final String title;
-  const PlaceholderScreen({super.key, required this.title});
-
-  @override
-  State<PlaceholderScreen> createState() => _PlaceholderScreenState();
-
-  // 💡 Función auxiliar de navegación
-  static void navigateToLogin(BuildContext context) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
-  }
-}
-// ...
-
-class _PlaceholderScreenState extends State<PlaceholderScreen> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // ...
-      body: Center(
-        child: Column(
-          // ...
-          children: [
-            // ...
-            ElevatedButton(
-              onPressed: () async {
-                // 1. Cierra la sesión
-                await FirebaseAuth.instance.signOut();
-
-                // 2. Verifica si el State sigue montado
-                if (!mounted) return;
-
-                // 3. Llama a la función auxiliar para navegación
-                // Esto satisface al analizador porque la función navigateToLogin
-                // no tiene un 'await' interno.
-                PlaceholderScreen.navigateToLogin(context);
-              },
-              child: const Text('Cerrar Sesión'),
-            ),
-          ],
         ),
       ),
     );

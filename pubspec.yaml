@@ -32,15 +32,15 @@ dependencies:
     sdk: flutter
   
   # Dependencias para StudyMatch
-  firebase_core: ^2.32.0     # Para inicializar Firebase
-  firebase_auth: ^4.16.0   # Para Autenticación (Login/Registro)
+  firebase_core: ^2.27.0     # Para inicializar Firebase
+  firebase_auth: ^4.19.0   # Para Autenticación (Login/Registro)
   cloud_firestore: ^4.17.5  # Para la Base de Datos (Perfiles, Salas)
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   intl: ^0.18.1
-  image_picker: ^1.0.4
-  firebase_storage: ^11.5.6
+  image_picker: ^1.1.2
+  firebase_storage: ^11.7.5
 
 dev_dependencies:
   flutter_test:

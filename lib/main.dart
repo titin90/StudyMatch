@@ -3,13 +3,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 // 💡 Importamos las dos pantallas clave.
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/login_screen.dart'; // Ajusta la ruta si están dentro de 'screens/'
+import 'screens/home_screen.dart'; // Ajusta la ruta si están dentro de 'screens/'
 
 void main() async {
   // Asegura que Flutter esté inicializado antes de llamar a Firebase.
   WidgetsFlutterBinding.ensureInitialized();
-  // Inicializa la conexión con Firebase.
+
+  // Inicializa la conexión con Firebase sin opciones explícitas.
+  // Esto funcionará si has configurado 'google-services.json' manualmente en Android.
   await Firebase.initializeApp();
   runApp(const StudyMatchApp());
 }
@@ -46,7 +48,8 @@ class StudyMatchApp extends StatelessWidget {
 
           // 2. Si snapshot.hasData es true, hay un usuario logueado.
           if (snapshot.hasData) {
-            return const HomeScreen(); // Lleva al usuario a ver las Salas de Estudio.
+            // ✅ SOLUCIÓN: Vamos directo a HomeScreen sin wrappers.
+            return const HomeScreen();
           }
 
           // 3. Si no hay usuario logueado, pide iniciar sesión o registrarse.

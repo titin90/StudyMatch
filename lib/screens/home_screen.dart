@@ -87,7 +87,7 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: textColor,
+                    color: primaryColor,
                   ),
                 ),
                 Icon(
@@ -123,7 +123,7 @@ class HomeScreen extends StatelessWidget {
                   return const Center(
                     child: Text(
                       'No hay salas de estudio disponibles. ¡Crea una!',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: primaryColor),
                     ),
                   );
                 }
@@ -181,31 +181,36 @@ class HomeScreen extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: primaryColor,
+                color: secondaryColor,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Crear sala',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  // 🔴 CAMBIO CLAVE: Envuelve la Column de texto en Expanded
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Crear sala',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Busca gente para estudiar o compartir material!',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ],
+                        SizedBox(height: 4),
+                        Text(
+                          // El texto largo que estaba causando el overflow
+                          'Busca gente para estudiar o compartir material!',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
                   ),
-                  Icon(Icons.add_circle, color: secondaryColor, size: 30),
+                  // El icono mantendrá su tamaño fijo, gracias a Expanded.
+                  Icon(Icons.add_circle, color: Colors.white, size: 30),
                 ],
               ),
             ),
@@ -292,6 +297,7 @@ class _StudyRoomCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      color: primaryColor,
       child: ListTile(
         onTap: () {
           // ✅ IMPLEMENTACIÓN FINAL DE NAVEGACIÓN
@@ -299,11 +305,14 @@ class _StudyRoomCard extends StatelessWidget {
             MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
           );
         },
-        leading: Icon(Icons.school, color: primaryColor, size: 30),
+        leading: Icon(Icons.school, color: Colors.white, size: 30),
         title: Text(
           // Usamos el getter name (Código: Tema)
           room.name,
-          style: const TextStyle(fontWeight: FontWeight.bold, color: textColor),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,14 +321,14 @@ class _StudyRoomCard extends StatelessWidget {
               // Indicador de tipo y ubicación
               '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
               style: const TextStyle(
-                color: secondaryColor,
+                color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
               ),
             ),
             Text(
               '${room.members.length} Miembros',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: const TextStyle(fontSize: 12, color: Colors.white),
             ),
           ],
         ),

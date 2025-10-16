@@ -34,6 +34,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   // Lista de campus (solo para ejemplo, puedes precargarlos de Firebase o usar la del perfil)
   final List<String> _campuses = [
+    'No Definido',
     'Campus San Joaquín',
     'Campus Casa Central',
     'Campus Vitacura',

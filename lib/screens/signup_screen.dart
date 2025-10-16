@@ -1,8 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'login_screen.dart'; // Para navegar de vuelta
+import 'login_screen.dart';
+import 'home_screen.dart'; // Usaremos HomeScreen como destino final
 
+// -----------------------------------------------------------------------------
+// PANTALLA TEMPORAL DE PLACEHOLDER (Redirección post-registro)
+// -----------------------------------------------------------------------------
+class PlaceholderScreen extends StatelessWidget {
+  final String title;
+  const PlaceholderScreen({super.key, required final this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "¡Registro Exitoso! 🎉",
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                // Redirigir al usuario al flujo principal de la app (Home/Wrapper)
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
+                );
+              },
+              child: const Text('Ir al Inicio de la App'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PANTALLA PRINCIPAL DE REGISTRO (SIGNUP)
+// -----------------------------------------------------------------------------
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -11,6 +51,7 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
+  // Controladores de campos de texto
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
@@ -19,29 +60,74 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _errorMessage;
   bool _agreedToTerms = false;
 
+  // 🎯 CAMPOS NUEVOS Y LISTAS PARA CARRERA Y CAMPUS
+  String? _selectedCampus;
+  String? _selectedCareer;
+
+  final List<String> _campuses = [
+    'Campus Casa Central',
+    'Campus San Joaquín',
+    'Campus Vitacura',
+    'Online',
+    'No Definido', // Opción por defecto
+  ];
+
+  final List<String> _careers = [
+    'Ingeniería Civil Informática',
+    'Ingeniería Civil Industrial',
+    'Ingeniería Comercial',
+    'Arquitectura',
+    'Técnico Universitario',
+    'Otra / No Especificada', // Opción por defecto
+  ];
+  // -------------------------------------------------
+
   static const String universityDomain = '@usm.cl';
 
-  // Colores de StudyMatch
+  // Colores de la app
   static const Color primaryColor = Color(0xFF0560FA);
   static const Color secondaryColor = Color(0xFFEC8000);
 
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  // Lógica de registro
   Future<void> _signUp() async {
     setState(() {
       _errorMessage = null;
     });
 
     if (_formKey.currentState!.validate()) {
+      // 🎯 1. VALIDACIÓN DE DROPDOWNS: Deben estar seleccionados
+      if (_selectedCampus == null || _selectedCareer == null) {
+        setState(() {
+          _errorMessage = 'Por favor, selecciona tu Campus y Carrera.';
+        });
+        return;
+      }
+
       if (!_agreedToTerms) {
         setState(() {
           _errorMessage = 'Debes aceptar los términos y condiciones.';
         });
         return;
       }
+      // -------------------------------------------------------
 
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
-      final fullName = _fullNameController.text.trim();
+      final name = _fullNameController.text.trim();
       final phone = _phoneController.text.trim();
+
+      // 🎯 Se usan los valores seleccionados del dropdown
+      final campus = _selectedCampus!;
+      final career = _selectedCareer!;
 
       // **Validación USM.cl**
       if (!email.toLowerCase().endsWith(universityDomain)) {
@@ -52,60 +138,103 @@ class _SignupScreenState extends State<SignupScreen> {
         return;
       }
 
-      // 1. Intentar crear el usuario con Firebase AUTH
+      // 2. Intentar crear el usuario con Firebase AUTH
       try {
         final userCredential = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(email: email, password: password);
 
         final user = userCredential.user;
 
-        // 2. Si es exitoso, GUARDAR los datos iniciales en Firestore (Perfil)
+        // 3. Guardar los datos iniciales en Firestore (Perfil)
         if (user != null) {
+          // Usamos un array vacío o un marcador de posición para evitar el error de serialización
+          List<String> initialCourses = ['TEMP_INIT'];
+
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
               .set({
-                'fullName': fullName,
+                'name': name,
                 'phone': phone,
                 'email': email,
-                'carrera':
-                    'No especificado', // Inicial para el perfil académico
-                'campus': 'No especificado', // Inicial para el perfil académico
-                'activeCourses': [], // Inicial para los ramos activos
-                'profilePictureUrl': '',
+                'career': career, // 🎯 Guardamos la carrera seleccionada
+                'campus': campus, // 🎯 Guardamos el campus seleccionado
+                'activeCourses': initialCourses,
+                'profileImageUrl': null,
                 'createdAt': FieldValue.serverTimestamp(),
+              });
+
+          // Limpiar la lista (eliminar el marcador temporal)
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+                'activeCourses': FieldValue.arrayRemove(['TEMP_INIT']),
               });
         }
 
-        // 3. Navegar: Ir a la pantalla de perfil (o al home)
+        // 4. Navegar: Ir a la pantalla de éxito
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
-          // La pantalla de perfil será manejada por main.dart, pero aquí navegamos a un placeholder
           MaterialPageRoute(
             builder: (context) =>
                 const PlaceholderScreen(title: "Registro Exitoso"),
           ),
         );
       } on FirebaseAuthException catch (e) {
-        // 4. Manejar errores de Firebase
+        // Manejo de errores de Firebase Auth
         String message;
         if (e.code == 'weak-password') {
           message = 'La contraseña es demasiado débil (mínimo 6 caracteres).';
         } else if (e.code == 'email-already-in-use') {
           message = 'Ya existe una cuenta con este correo.';
         } else {
-          message = 'Error al registrar. Inténtalo de nuevo.';
+          message = 'Error al registrar: ${e.message ?? 'Inténtalo de nuevo.'}';
         }
         setState(() {
           _errorMessage = message;
         });
       } catch (e) {
+        // Manejo de errores generales
+        print('Error al guardar datos en Firestore: $e');
         setState(() {
-          _errorMessage = 'Error desconocido: $e';
+          _errorMessage = 'Ocurrió un error inesperado al guardar el perfil.';
         });
       }
     }
   }
+
+  // 🎯 WIDGET HELPER para crear el DropdownButtonFormField de forma limpia
+  Widget _buildDropdownField({
+    required String labelText,
+    required String? value,
+    required List<String> items,
+    required String hintText,
+    required void Function(String?) onChanged,
+    required IconData icon,
+  }) {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(
+        labelText: labelText,
+        prefixIcon: Icon(icon),
+        border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
+      ),
+      hint: Text(hintText),
+      value: value,
+      isExpanded: true,
+      // Validación: el valor no puede ser nulo
+      validator: (val) => val == null ? 'Selección obligatoria' : null,
+      onChanged: onChanged,
+      items: items.map<DropdownMenuItem<String>>((String item) {
+        return DropdownMenuItem<String>(value: item, child: Text(item));
+      }).toList(),
+    );
+  }
+  // -------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +269,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _fullNameController,
                   decoration: const InputDecoration(
                     labelText: 'Full Name',
+                    prefixIcon: Icon(Icons.person),
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) =>
@@ -152,6 +282,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _phoneController,
                   decoration: const InputDecoration(
                     labelText: 'Phone Number',
+                    prefixIcon: Icon(Icons.phone),
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.phone,
@@ -160,16 +291,16 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 3. Institutional Email Address (USM)
+                // 3. Institutional Email Address (@usm.cl)
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
                     labelText: 'Institutional Email Address (@usm.cl)',
+                    prefixIcon: Icon(Icons.email),
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
-                    // 💡 CORRECCIÓN: Se añaden las llaves al primer 'if'
                     if (value == null || value.isEmpty) {
                       return 'Ingresa tu correo institucional.';
                     }
@@ -186,6 +317,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _passwordController,
                   decoration: const InputDecoration(
                     labelText: 'Password',
+                    prefixIcon: Icon(Icons.lock),
                     border: OutlineInputBorder(),
                   ),
                   obscureText: true,
@@ -195,7 +327,37 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Checkbox de Términos
+                // 🎯 5. CAMPO CARRERA
+                _buildDropdownField(
+                  labelText: 'Carrera',
+                  value: _selectedCareer,
+                  items: _careers,
+                  hintText: 'Selecciona tu Carrera',
+                  icon: Icons.school,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCareer = newValue;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // 🎯 6. CAMPO CAMPUS
+                _buildDropdownField(
+                  labelText: 'Campus',
+                  value: _selectedCampus,
+                  items: _campuses,
+                  hintText: 'Selecciona tu Campus',
+                  icon: Icons.location_city,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCampus = newValue;
+                    });
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // Checkbox de Términos y Condiciones
                 Row(
                   children: [
                     Checkbox(
@@ -205,6 +367,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           _agreedToTerms = newValue ?? false;
                         });
                       },
+                      activeColor: primaryColor,
                     ),
                     Expanded(
                       child: GestureDetector(
@@ -215,7 +378,10 @@ class _SignupScreenState extends State<SignupScreen> {
                         },
                         child: Text(
                           'By ticking this box, you agree to our Terms and conditions and private policy',
-                          style: TextStyle(color: Colors.grey[700]),
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 13.0,
+                          ),
                         ),
                       ),
                     ),
@@ -223,7 +389,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Mensaje de Error
+                // Mensaje de Error (si existe)
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16.0),
@@ -244,6 +410,9 @@ class _SignupScreenState extends State<SignupScreen> {
                     backgroundColor: primaryColor,
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: const Text('Sign Up', style: TextStyle(fontSize: 18)),
                 ),
@@ -266,7 +435,10 @@ class _SignupScreenState extends State<SignupScreen> {
                       },
                       child: Text(
                         'Sign in',
-                        style: TextStyle(color: secondaryColor),
+                        style: TextStyle(
+                          color: secondaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],

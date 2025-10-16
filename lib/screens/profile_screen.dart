@@ -3,9 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart'; // ✅ CAMBIO: Importar image_picker
-import 'package:firebase_storage/firebase_storage.dart'; // ✅ CAMBIO: Importar firebase_storage
-import 'dart:io'; // ✅ CAMBIO: Para File
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 
 // Importa la pantalla de login para la navegación
 import 'login_screen.dart';
@@ -21,15 +21,14 @@ class UserProfile {
   final String name;
   final String campus;
   final String career;
-  final String?
-  profileImageUrl; // ✅ CAMBIO: Nuevo campo para la URL de la imagen
+  final String? profileImageUrl;
 
   UserProfile({
     required this.email,
     required this.name,
     required this.campus,
     required this.career,
-    this.profileImageUrl, // ✅ CAMBIO: Hacerlo opcional
+    this.profileImageUrl,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -39,14 +38,13 @@ class UserProfile {
       name: data?['name'] ?? 'Usuario sin Nombre',
       campus: data?['campus'] ?? 'No Definido',
       career: data?['career'] ?? 'No Definido',
-      profileImageUrl: data?['profileImageUrl'], // ✅ CAMBIO: Mapear la URL
+      profileImageUrl: data?['profileImageUrl'],
     );
   }
 }
 
 // --- PANTALLA DE PERFIL ---
 class ProfileScreen extends StatefulWidget {
-  // ✅ CAMBIO: Ahora es StatefulWidget
   const ProfileScreen({super.key});
 
   @override
@@ -54,11 +52,18 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // ✅ CAMBIO: Nuevo State
-  final ImagePicker _picker =
-      ImagePicker(); // ✅ CAMBIO: Instancia de ImagePicker
-  final FirebaseStorage _storage =
-      FirebaseStorage.instance; // ✅ CAMBIO: Instancia de FirebaseStorage
+  final ImagePicker _picker = ImagePicker();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  // ✅ CAMBIO CLAVE: Variable para almacenar y controlar el Future
+  late Future<UserProfile> _userProfileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Inicializar el Future
+    _userProfileFuture = _fetchUserProfile();
+  }
 
   // Función para obtener los datos del usuario (Auth y Firestore)
   Future<UserProfile> _fetchUserProfile() async {
@@ -81,13 +86,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         name: user.displayName ?? 'Usuario Temporal',
         campus: 'No Definido',
         career: 'No Definido',
-        profileImageUrl:
-            null, // ✅ CAMBIO: Sin imagen si no hay perfil en Firestore
+        profileImageUrl: null,
       );
     }
   }
 
-  // ✅ CAMBIO: Nueva función para seleccionar y subir imagen
+  // Función para seleccionar y subir imagen
   Future<void> _pickAndUploadImage() async {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -103,12 +107,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
 
       if (image != null) {
-        setState(() {
-          // Opcional: Mostrar un indicador de carga
+        if (mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Subiendo imagen...')));
-        });
+        }
 
         // 1. Subir la imagen a Firebase Storage
         File file = File(image.path);
@@ -128,13 +131,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .update({'profileImageUrl': downloadUrl});
 
         if (mounted) {
+          // ✅ APLICACIÓN DEL REFRESH: Actualizar el Future para forzar la reconstrucción del FutureBuilder
+          setState(() {
+            _userProfileFuture = _fetchUserProfile();
+          });
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Foto de perfil actualizada con éxito!'),
             ),
           );
-          // 3. Reconstruir la UI para mostrar la nueva imagen
-          setState(() {});
         }
       }
     } catch (e) {
@@ -166,7 +172,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         foregroundColor: Colors.white,
       ),
       body: FutureBuilder<UserProfile>(
-        future: _fetchUserProfile(),
+        // ✅ USAR EL FUTURE DE ESTADO
+        future: _userProfileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -201,23 +208,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Center(
                   child: Column(
                     children: [
-                      // ✅ CAMBIO: Widget para mostrar la foto de perfil
+                      // Widget para mostrar la foto de perfil
                       InkWell(
                         // Hace el avatar clickeable
                         onTap: _pickAndUploadImage,
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundColor: primaryColor,
-                          backgroundImage: userProfile.profileImageUrl != null
-                              ? NetworkImage(userProfile.profileImageUrl!)
-                              : null, // Usa la imagen de red si existe
-                          child: userProfile.profileImageUrl == null
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.white,
-                                )
-                              : null, // Muestra el icono solo si no hay imagen
+                        child: Container(
+                          width:
+                              100, // Define un tamaño fijo para el contenedor
+                          height: 100,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                primaryColor, // Color de fondo si no hay imagen
+                          ),
+                          child: ClipOval(
+                            child: userProfile.profileImageUrl != null
+                                ? Image.network(
+                                    userProfile.profileImageUrl!,
+                                    fit: BoxFit.cover,
+                                    // 🎯 CAMBIO CLAVE: Manejo de error al cargar la imagen de la red
+                                    errorBuilder: (context, error, stackTrace) {
+                                      // Si la imagen falla (como en 'object-not-found'), se muestra el icono
+                                      print(
+                                        'Error al cargar imagen de perfil: $error',
+                                      ); // Depuración
+                                      return const Icon(
+                                        Icons.person,
+                                        size: 60,
+                                        color: Colors.white,
+                                      );
+                                    },
+                                    // Opcional: Builder para mostrar un spinner mientras carga
+                                    loadingBuilder:
+                                        (context, child, loadingProgress) {
+                                          if (loadingProgress == null)
+                                            return child;
+                                          return Center(
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              value:
+                                                  loadingProgress
+                                                          .expectedTotalBytes !=
+                                                      null
+                                                  ? loadingProgress
+                                                            .cumulativeBytesLoaded /
+                                                        loadingProgress
+                                                            .expectedTotalBytes!
+                                                  : null,
+                                            ),
+                                          );
+                                        },
+                                  )
+                                : const Icon(
+                                    // Si profileImageUrl es null, muestra el icono por defecto
+                                    Icons.person,
+                                    size: 60,
+                                    color: Colors.white,
+                                  ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 10),
