@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
-import 'chat_room_screen.dart';
+import 'chat_room_screen.dart'; // Asegúrate de que esta importación sea correcta
 
 // --- COLORES DE STUDYMATCH ---
 const Color primaryColor = Color(0xFF0560FA);
@@ -27,13 +27,10 @@ class StudyRoom {
 
   StudyRoom.fromFirestore(DocumentSnapshot doc)
     : id = doc.id,
-      // ✅ CORRECCIÓN 1: courseCode es el valor principal
       courseCode = doc['courseCode'] ?? 'N/A',
       topic = doc['topic'] ?? 'General',
-      // ✅ CORRECCIÓN 2: El creador se llama 'creatorId'
       creatorId = doc['creatorId'] ?? '',
       members = List<String>.from(doc['members'] ?? []),
-      // ✅ CORRECCIÓN 3: isOnline se basa en el campo 'type' de Firestore
       isOnline = doc['type'] == 'Online',
       campus = doc['campus'] ?? 'Online';
 
@@ -160,11 +157,11 @@ class HomeScreen extends StatelessWidget {
           TextField(
             decoration: InputDecoration(
               hintText: 'Encontrar Sala (Ej: MAT-022, Calculo)',
-              prefixIcon: Icon(Icons.search, color: primaryColor),
+              prefixIcon: const Icon(Icons.search, color: primaryColor),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              contentPadding: EdgeInsets.symmetric(vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
           ),
           const SizedBox(height: 16),
@@ -187,7 +184,6 @@ class HomeScreen extends StatelessWidget {
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 🔴 CAMBIO CLAVE: Envuelve la Column de texto en Expanded
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,14 +198,12 @@ class HomeScreen extends StatelessWidget {
                         ),
                         SizedBox(height: 4),
                         Text(
-                          // El texto largo que estaba causando el overflow
                           'Busca gente para estudiar o compartir material!',
                           style: TextStyle(color: Colors.white70),
                         ),
                       ],
                     ),
                   ),
-                  // El icono mantendrá su tamaño fijo, gracias a Expanded.
                   Icon(Icons.add_circle, color: Colors.white, size: 30),
                 ],
               ),
@@ -247,44 +241,53 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// --- WIDGET PARA LA CARD DE SALA (INCLUYE LÓGICA DE UNIRSE) ---
+// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
 class _StudyRoomCard extends StatelessWidget {
   final StudyRoom room;
 
   const _StudyRoomCard({required this.room});
 
-  // Función para unirse a la sala
-  void _joinRoom(BuildContext context) async {
+  // 💡 NUEVA FUNCIÓN: Unirse y Navegar al mismo tiempo
+  void _handleRoomAction(BuildContext context, bool isMember) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    if (room.members.contains(userId)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ya eres miembro de esta sala.')),
-      );
-      return;
+    // Si NO es miembro, primero intentamos unirnos
+    if (!isMember) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('study_rooms')
+            .doc(room.id)
+            .update({
+              'members': FieldValue.arrayUnion([userId]),
+            });
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('¡Te has unido a la sala ${room.courseCode}!'),
+            ),
+          );
+        }
+      } catch (e) {
+        // Manejar el error de permiso o de conexión
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error al unirse. Verifica tus reglas de seguridad: $e',
+            ),
+          ),
+        );
+        return; // Detener la navegación si la unión falla
+      }
     }
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('study_rooms')
-          .doc(room.id)
-          .update({
-            'members': FieldValue.arrayUnion([userId]),
-          });
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Te has unido a la sala ${room.courseCode}!')),
+    // Navegar a la sala de chat (Esto ocurre si ya era miembro o si se unió exitosamente)
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
       );
-
-      // TODO: Tras unirse, idealmente navegar al ChatRoomScreen
-      // Navegaremos aquí tras implementar la pantalla de chat
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error al unirse: $e')));
     }
   }
 
@@ -293,21 +296,22 @@ class _StudyRoomCard extends StatelessWidget {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     final isMember = room.members.contains(userId);
 
+    // Determina el comportamiento al tocar la tarjeta:
+    // 1. Si NO es miembro, el onTap de la tarjeta no hace nada.
+    // 2. Si ES miembro, el onTap navega directamente.
+    final Function()? cardOnTap = isMember
+        ? () => _handleRoomAction(context, true)
+        : null;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: primaryColor,
       child: ListTile(
-        onTap: () {
-          // ✅ IMPLEMENTACIÓN FINAL DE NAVEGACIÓN
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
-          );
-        },
-        leading: Icon(Icons.school, color: Colors.white, size: 30),
+        onTap: cardOnTap, // Navegación solo si ya es miembro
+        leading: const Icon(Icons.school, color: Colors.white, size: 30),
         title: Text(
-          // Usamos el getter name (Código: Tema)
           room.name,
           style: const TextStyle(
             fontWeight: FontWeight.bold,
@@ -318,7 +322,6 @@ class _StudyRoomCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              // Indicador de tipo y ubicación
               '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
               style: const TextStyle(
                 color: Colors.white,
@@ -332,19 +335,21 @@ class _StudyRoomCard extends StatelessWidget {
             ),
           ],
         ),
+        // 💡 LÓGICA DEL BOTÓN DERECHO
         trailing: isMember
             ? const Icon(
                 Icons.check_circle,
-                color: Colors.green,
+                color: Colors.green, // Icono de éxito para miembros
                 size: 24,
                 semanticLabel: 'Miembro',
               )
             : TextButton(
-                onPressed: () => _joinRoom(context),
+                // Si NO es miembro, el botón llama a la acción completa (Unirse + Navegar)
+                onPressed: () => _handleRoomAction(context, false),
                 child: const Text(
                   'Unirse',
                   style: TextStyle(
-                    color: primaryColor,
+                    color: secondaryColor, // Color secundario para el botón
                     fontWeight: FontWeight.bold,
                   ),
                 ),
