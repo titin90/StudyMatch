@@ -3,12 +3,15 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+
+    // ESTA ES LA LÍNEA CLAVE PARA CONECTAR GOOGLE SERVICES
+    id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.studyapp"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "26.3.11579264"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
