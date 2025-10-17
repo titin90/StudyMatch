@@ -6,24 +6,33 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
-import 'chat_room_screen.dart'; // Asegúrate de que esta importación sea correcta
+import 'chat_room_screen.dart';
 
 // --- COLORES DE STUDYMATCH ---
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
 const Color textColor = Color(0xFF3A3A3A); // Color de texto oscuro
 
+// 💡 FUNCIÓN GLOBAL: Ruta de perfil para verificar ramos
+String _getRamosDocPath(String uid) {
+  const appId = String.fromEnvironment(
+    'APP_ID',
+    defaultValue: 'default-app-id',
+  );
+  // Esta ruta apunta al documento donde se guardan los ramos activos del usuario.
+  return 'artifacts/$appId/users/$uid/profile_data/data';
+}
+
 // --- MODELO DE DATOS DE LA SALA (ROOM) ---
 class StudyRoom {
   final String id;
-  final String
-  courseCode; // Usamos el código del ramo como identificador principal
+  final String courseCode;
   final String topic;
-  final String
-  creatorId; // Cambiado de 'hostId' a 'creatorId' para mayor claridad
+  final String creatorId;
   final List<String> members;
-  final bool isOnline; // Derivado del campo 'type' en Firestore
+  final bool isOnline;
   final String campus;
+  final Map<String, dynamic> rawData;
 
   StudyRoom.fromFirestore(DocumentSnapshot doc)
     : id = doc.id,
@@ -32,149 +41,415 @@ class StudyRoom {
       creatorId = doc['creatorId'] ?? '',
       members = List<String>.from(doc['members'] ?? []),
       isOnline = doc['type'] == 'Online',
-      campus = doc['campus'] ?? 'Online';
+      campus = doc['campus'] ?? 'Online',
+      rawData = doc.data() as Map<String, dynamic>;
 
-  // Getter para nombre de sala (Usamos el código y el tema como nombre)
   String get name => '$courseCode: $topic';
 }
 
-// --- PANTALLA PRINCIPAL (HOMESCREEN) ---
-class HomeScreen extends StatelessWidget {
+// --- LÓGICA DE UNIÓN Y VERIFICACIÓN DE RAMOS (AUXILIARES) ---
+
+// 💡 FUNCIÓN AUXILIAR: Ejecuta la lógica de unión (actualiza Firestore y navega)
+Future<void> _performJoin(
+  BuildContext context,
+  String userId,
+  String roomId,
+  Map<String, dynamic> roomData,
+) async {
+  // [Lógica de _performJoin sin cambios]
+  if (roomData['members'] != null &&
+      (roomData['members'] as List).contains(userId)) {
+    if (context.mounted) {
+      final room = StudyRoom.fromFirestore(
+        await FirebaseFirestore.instance
+            .collection('study_rooms')
+            .doc(roomId)
+            .get(),
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
+      );
+    }
+    return;
+  }
+  try {
+    await FirebaseFirestore.instance
+        .collection('study_rooms')
+        .doc(roomId)
+        .update({
+          'members': FieldValue.arrayUnion([userId]),
+        });
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('¡Te uniste a la sala con éxito!')),
+      );
+      final room = StudyRoom.fromFirestore(
+        await FirebaseFirestore.instance
+            .collection('study_rooms')
+            .doc(roomId)
+            .get(),
+      );
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al unirse a la sala: $e')));
+    }
+  }
+}
+
+// 💡 FUNCIÓN PRINCIPAL: Verifica la membresía del ramo antes de llamar a _performJoin
+Future<void> _checkAndJoinRoom(
+  BuildContext context,
+  Map<String, dynamic> roomData,
+  String roomId,
+) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debes iniciar sesión para unirte.')),
+      );
+    }
+    return;
+  }
+
+  final roomCourseCode = roomData['courseCode'] as String? ?? 'N/A';
+
+  if (roomCourseCode == 'N/A' || roomCourseCode.isEmpty) {
+    _performJoin(context, user.uid, roomId, roomData);
+    return;
+  }
+
+  try {
+    final ramosDocPath = _getRamosDocPath(user.uid);
+    final userRamosDoc = await FirebaseFirestore.instance
+        .doc(ramosDocPath)
+        .get();
+    final userActiveCourses =
+        (userRamosDoc.data()?['current_ramos'] as List<dynamic>?)
+            ?.cast<String>()
+            .toList() ??
+        [];
+
+    if (userActiveCourses.contains(roomCourseCode)) {
+      _performJoin(context, user.uid, roomId, roomData);
+    } else {
+      if (context.mounted) {
+        final courseName = roomData['courseName'] ?? roomCourseCode;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No puedes unirte. Debes cursar "$courseName" ($roomCourseCode) para entrar a esta sala.',
+            ),
+            backgroundColor: secondaryColor,
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al verificar el perfil: $e')),
+      );
+    }
+  }
+}
+
+// --- PANTALLA PRINCIPAL (HOMESCREEN) Y WIDGETS AUXILIARES ---
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('StudyMatch'),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
-        // BOTÓN CERRAR SESIÓN (Logout)
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              // Cierra la sesión de Firebase Auth
-              await FirebaseAuth.instance.signOut();
+class _HomeScreenState extends State<HomeScreen> {
+  // [Resto del código de HomeScreenState sin cambios]
+  int _selectedIndex = 0;
 
-              // Navega de vuelta al Login, eliminando todas las rutas anteriores
-              if (!context.mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (Route<dynamic> route) => false,
-              );
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Área de Búsqueda y Creación de Sala
-          _buildHeader(context),
+  late final List<Widget> _widgetOptions = <Widget>[
+    _HomeContent(
+      onCreateRoomTapped: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const CreateRoomScreen()),
+        );
+      },
+    ),
+    const Center(child: Text('Pantalla de Notificaciones (Próximamente)')),
+    const ProfileScreen(),
+  ];
 
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Salas disponibles.',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
-                ),
-                Icon(
-                  Icons.filter_list,
-                  color: textColor,
-                ), // Placeholder para Filtros
-              ],
-            ),
-          ),
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
-          // StreamBuilder para la lista de salas en tiempo real
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              // Obtener todas las salas y ordenarlas por fecha de creación
-              stream: FirebaseFirestore.instance
-                  .collection('study_rooms')
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text('Error al cargar las salas: ${snapshot.error}'),
-                  );
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: primaryColor),
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No hay salas de estudio disponibles. ¡Crea una!',
-                      style: TextStyle(color: primaryColor),
-                    ),
-                  );
-                }
-
-                // Mapear los documentos de Firestore a objetos StudyRoom
-                final rooms = snapshot.data!.docs
-                    .map((doc) => StudyRoom.fromFirestore(doc))
-                    .toList();
-
-                return ListView.builder(
-                  padding: const EdgeInsets.only(top: 8),
-                  itemCount: rooms.length,
-                  itemBuilder: (context, index) {
-                    return _StudyRoomCard(room: rooms[index]);
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      // Navegación inferior
-      bottomNavigationBar: _buildBottomNavBar(context),
+  Widget _buildLogoutAction(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.logout),
+      onPressed: () async {
+        await FirebaseAuth.instance.signOut();
+        if (!context.mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (Route<dynamic> route) => false,
+        );
+      },
     );
   }
 
-  // Widget para el área de Búsqueda y Creación de Sala
+  @override
+  Widget build(BuildContext context) {
+    String title = 'StudyMatch';
+    if (_selectedIndex == 2) {
+      title = 'Mi Perfil';
+    } else if (_selectedIndex == 1) {
+      title = 'Notificaciones';
+    } else if (_selectedIndex == 0) {
+      title = 'Home';
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [if (_selectedIndex == 2) _buildLogoutAction(context)],
+      ),
+
+      body: _widgetOptions.elementAt(_selectedIndex),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications),
+            label: 'Notificaciones',
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: primaryColor,
+        unselectedItemColor: Colors.grey,
+        onTap: _onItemTapped,
+        backgroundColor: Colors.white,
+        elevation: 10,
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------
+// --- WIDGET DE CONTENIDO DE LA PESTAÑA HOME (MODIFICADO) ---
+// -----------------------------------------------------------
+
+class _HomeContent extends StatefulWidget {
+  final VoidCallback onCreateRoomTapped;
+
+  const _HomeContent({required this.onCreateRoomTapped});
+
+  @override
+  State<_HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<_HomeContent> {
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+
+  List<String> _userActiveCourses = [];
+  String? _selectedFilterRamo;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveCourses();
+  }
+
+  // 💡 FUNCIÓN: Carga los ramos activos del usuario para usarlos como filtro
+  Future<void> _loadActiveCourses() async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      final ramosDocPath = _getRamosDocPath(userId);
+      final ramosDoc = await _firestore.doc(ramosDocPath).get();
+      final ramosData = ramosDoc.data();
+
+      if (mounted) {
+        setState(() {
+          _userActiveCourses =
+              (ramosData?['current_ramos'] as List<dynamic>?)
+                  ?.cast<String>()
+                  .toList() ??
+              [];
+          // Añadir la opción 'Mostrar Todos' y seleccionarla por defecto
+          _userActiveCourses.insert(0, 'Mostrar Todos');
+          _selectedFilterRamo = _userActiveCourses.first;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _userActiveCourses.insert(0, 'Mostrar Todos');
+          _selectedFilterRamo = 'Mostrar Todos';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: primaryColor),
+      );
+    }
+
+    // 💡 Lógica para construir el Query de Firestore
+    Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
+
+    // Aplicar filtro si se seleccionó un ramo específico
+    // NOTA: No aplicamos .orderBy() nunca para evitar el error de índice compuesto.
+    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
+      roomsQuery = roomsQuery.where(
+        'courseCode',
+        isEqualTo: _selectedFilterRamo,
+      );
+    }
+    // ¡Eliminamos la ordenación roomsQuery = roomsQuery.orderBy('createdAt', descending: true);!
+    // Firestore usará el orden por defecto.
+
+    return Column(
+      children: [
+        // 💡 CAMBIO: Usar Dropdown para filtrar en lugar del TextField de búsqueda
+        _buildHeader(context),
+
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Salas disponibles.',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
+              ),
+              Icon(Icons.filter_list, color: textColor),
+            ],
+          ),
+        ),
+
+        // StreamBuilder para la lista de salas filtrada
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: roomsQuery.snapshots(), // Usamos el Query simplificado
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text('Error al cargar las salas: ${snapshot.error}'),
+                );
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: primaryColor),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(
+                  child: Text(
+                    _selectedFilterRamo == 'Mostrar Todos'
+                        ? 'No hay salas de estudio disponibles. ¡Crea una!'
+                        : 'No hay salas para el ramo seleccionado.',
+                    style: const TextStyle(color: primaryColor),
+                  ),
+                );
+              }
+
+              final rooms = snapshot.data!.docs
+                  .map((doc) => StudyRoom.fromFirestore(doc))
+                  .toList();
+
+              return ListView.builder(
+                padding: const EdgeInsets.only(top: 8),
+                itemCount: rooms.length,
+                itemBuilder: (context, index) {
+                  return _StudyRoomCard(room: rooms[index]);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ... El resto del código (_buildHeader, _StudyRoomCard, etc.) sigue igual.
+
+  // 💡 WIDGET: Reemplaza el campo de búsqueda por el Dropdown de Filtro
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Campo de búsqueda
-          TextField(
-            decoration: InputDecoration(
-              hintText: 'Encontrar Sala (Ej: MAT-022, Calculo)',
-              prefixIcon: const Icon(Icons.search, color: primaryColor),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+          // Dropdown para seleccionar el Ramo (Filtro)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedFilterRamo,
+                hint: const Text('Filtrar por Ramo'),
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedFilterRamo = newValue;
+                  });
+                },
+                items: _userActiveCourses.map<DropdownMenuItem<String>>((
+                  String value,
+                ) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(
+                      value == 'Mostrar Todos'
+                          ? 'Mostrar Salas Para Mi'
+                          : value,
+                      style: TextStyle(
+                        fontWeight: value == 'Mostrar Todos'
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: value == 'Mostrar Todos'
+                            ? primaryColor
+                            : textColor,
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
           ),
           const SizedBox(height: 16),
+
           // Botón Crear Sala (Estilo tarjeta)
           InkWell(
-            onTap: () {
-              // Navegar a la pantalla de creación dedicada
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const CreateRoomScreen(),
-                ),
-              );
-            },
+            onTap: widget.onCreateRoomTapped,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -213,33 +488,13 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
-  // Widget de barra de navegación inferior
-  Widget _buildBottomNavBar(BuildContext context) {
-    return BottomNavigationBar(
-      items: const <BottomNavigationBarItem>[
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.notifications),
-          label: 'Notificaciones',
-        ),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
-      ],
-      currentIndex: 0,
-      selectedItemColor: primaryColor,
-      unselectedItemColor: Colors.grey,
-      onTap: (index) {
-        if (index == 2) {
-          // Navegar a la pantalla de perfil real
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const ProfileScreen()),
-          );
-        }
-        // TODO: Agregar navegación para Notificaciones si se implementa
-      },
-    );
-  }
 }
+
+// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
+// En home_screen.dart
+
+// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
+// En home_screen.dart
 
 // --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
 class _StudyRoomCard extends StatelessWidget {
@@ -247,47 +502,22 @@ class _StudyRoomCard extends StatelessWidget {
 
   const _StudyRoomCard({required this.room});
 
-  // 💡 NUEVA FUNCIÓN: Unirse y Navegar al mismo tiempo
+  // FUNCIÓN: Unirse y Navegar al mismo tiempo (Lógica de verificación sin cambios)
   void _handleRoomAction(BuildContext context, bool isMember) async {
+    final roomData = room.rawData;
+    final roomId = room.id;
+
+    // Ejecutar la verificación de ramo y la lógica de unión/navegación
+    await _checkAndJoinRoom(context, roomData, roomId);
+
+    // Navegamos si ya es miembro
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    // Si NO es miembro, primero intentamos unirnos
-    if (!isMember) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('study_rooms')
-            .doc(room.id)
-            .update({
-              'members': FieldValue.arrayUnion([userId]),
-            });
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('¡Te has unido a la sala ${room.courseCode}!'),
-            ),
-          );
-        }
-      } catch (e) {
-        // Manejar el error de permiso o de conexión
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error al unirse. Verifica tus reglas de seguridad: $e',
-            ),
-          ),
+    if (userId != null && room.members.contains(userId)) {
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
         );
-        return; // Detener la navegación si la unión falla
       }
-    }
-
-    // Navegar a la sala de chat (Esto ocurre si ya era miembro o si se unió exitosamente)
-    if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
-      );
     }
   }
 
@@ -296,12 +526,9 @@ class _StudyRoomCard extends StatelessWidget {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     final isMember = room.members.contains(userId);
 
-    // Determina el comportamiento al tocar la tarjeta:
-    // 1. Si NO es miembro, el onTap de la tarjeta no hace nada.
-    // 2. Si ES miembro, el onTap navega directamente.
-    final Function()? cardOnTap = isMember
-        ? () => _handleRoomAction(context, true)
-        : null;
+    final Function()? cardOnTap = () {
+      _handleRoomAction(context, isMember);
+    };
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -309,8 +536,10 @@ class _StudyRoomCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: primaryColor,
       child: ListTile(
-        onTap: cardOnTap, // Navegación solo si ya es miembro
-        leading: const Icon(Icons.school, color: Colors.white, size: 30),
+        onTap: cardOnTap, // Acción completa: Unirse/Navegar
+
+        // 💡 CAMBIO 1: Eliminamos el leading para quitar el "cuadrado blanco"
+        // leading: ...
         title: Text(
           room.name,
           style: const TextStyle(
@@ -322,38 +551,40 @@ class _StudyRoomCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
+              // Título secundario (Tema)
+              room.topic,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
-            Text(
-              '${room.members.length} Miembros',
-              style: const TextStyle(fontSize: 12, color: Colors.white),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                // Conteo de Miembros (Número e icono)
+                Text(
+                  '${room.members.length}',
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
+                const Icon(Icons.people_alt, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w300,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        // 💡 LÓGICA DEL BOTÓN DERECHO
-        trailing: isMember
-            ? const Icon(
-                Icons.check_circle,
-                color: Colors.green, // Icono de éxito para miembros
-                size: 24,
-                semanticLabel: 'Miembro',
-              )
-            : TextButton(
-                // Si NO es miembro, el botón llama a la acción completa (Unirse + Navegar)
-                onPressed: () => _handleRoomAction(context, false),
-                child: const Text(
-                  'Unirse',
-                  style: TextStyle(
-                    color: secondaryColor, // Color secundario para el botón
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+
+        // 💡 CAMBIO 2 y 3: LÓGICA DEL BOTÓN DERECHO (Flecha de navegación con cambio de color)
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          // Color verde si es miembro, color blanco si no lo es
+          color: isMember ? const Color(0xFF4CAF50) : Colors.white,
+          size: 24,
+        ),
       ),
     );
   }

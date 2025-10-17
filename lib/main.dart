@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+// Se eliminó la importación de 'firebase_options.dart'
 
-// 💡 Importamos las dos pantallas clave.
-import 'screens/login_screen.dart'; // Ajusta la ruta si están dentro de 'screens/'
-import 'screens/home_screen.dart'; // Ajusta la ruta si están dentro de 'screens/'
+// 💡 Importamos las pantallas clave (ajusta las rutas si están en carpetas)
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
 
 void main() async {
   // Asegura que Flutter esté inicializado antes de llamar a Firebase.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializa la conexión con Firebase sin opciones explícitas.
-  // Esto funcionará si has configurado 'google-services.json' manualmente en Android.
+  // Inicializa la conexión con Firebase.
+  // NOTA: Para el entorno de Canvas, la inicialización simple es suficiente.
   await Firebase.initializeApp();
+
+  // 🚀 Se eliminó la llamada a 'loadInitialSubjects()' ya que la data de ramos es estática
+  // y se accede directamente desde los otros archivos (ramo_selection_screen.dart, etc.).
+
   runApp(const StudyMatchApp());
 }
 
@@ -26,18 +31,16 @@ class StudyMatchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'StudyMatch',
-      debugShowCheckedModeBanner: false, // Oculta la etiqueta de debug
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: primaryColor),
         useMaterial3: true,
       ),
 
-      // 🚀 PUNTO CLAVE: Decide qué pantalla mostrar.
+      // Decide qué pantalla mostrar.
       home: StreamBuilder<User?>(
-        // Escucha si hay algún cambio en el usuario (login, logout, registro)
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // 1. Mostrar carga mientras Firebase verifica el estado inicial.
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(
@@ -46,13 +49,10 @@ class StudyMatchApp extends StatelessWidget {
             );
           }
 
-          // 2. Si snapshot.hasData es true, hay un usuario logueado.
           if (snapshot.hasData) {
-            // ✅ SOLUCIÓN: Vamos directo a HomeScreen sin wrappers.
             return const HomeScreen();
           }
 
-          // 3. Si no hay usuario logueado, pide iniciar sesión o registrarse.
           return const LoginScreen();
         },
       ),

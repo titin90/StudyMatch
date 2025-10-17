@@ -1,49 +1,55 @@
-// lib/screens/profile_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:io';
+// Importaciones requeridas
+import '../ramo_selection_screen.dart';
+import '../ramo_data.dart'; // Lista consolidada de ramos
+import 'login_screen.dart'; // Para redirigir al cerrar sesión
 
-// Importa la pantalla de login para la navegación
-import 'login_screen.dart';
-
-// --- COLORES DE STUDYMATCH ---
+// Colores definidos para consistencia
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
+// Usamos un gris más suave para la información secundaria
+const Color grayColor = Color(0xFFA7A7A7);
 const Color textColor = Color(0xFF3A3A3A);
 
-// Modelo de datos para el usuario
+// Modelo de datos para el perfil del usuario (sin cambios lógicos)
 class UserProfile {
+  final String uid;
   final String email;
-  final String name;
+  final String careerId;
+  final String careerName;
   final String campus;
-  final String career;
-  final String? profileImageUrl;
+  final List<String> currentRamos;
 
   UserProfile({
+    required this.uid,
     required this.email,
-    required this.name,
+    required this.careerId,
+    required this.careerName,
     required this.campus,
-    required this.career,
-    this.profileImageUrl,
+    required this.currentRamos,
   });
 
-  factory UserProfile.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>?;
+  factory UserProfile.fromFirestore(
+    String uid,
+    String email,
+    Map<String, dynamic> data,
+  ) {
     return UserProfile(
-      email: data?['email'] ?? 'N/A',
-      name: data?['name'] ?? 'Usuario sin Nombre',
-      campus: data?['campus'] ?? 'No Definido',
-      career: data?['career'] ?? 'No Definido',
-      profileImageUrl: data?['profileImageUrl'],
+      uid: uid,
+      email: email,
+      // Leemos de /users/{uid} o usamos fallback
+      careerId: data['career_id'] ?? 'INF',
+      careerName: data['career_name'] ?? 'Ingeniería Civil Informática',
+      campus: data['campus'] ?? 'No Definido',
+      // Leemos de la ruta Canvas Path para los ramos
+      currentRamos:
+          (data['current_ramos'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 }
 
-// --- PANTALLA DE PERFIL ---
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -52,320 +58,269 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ImagePicker _picker = ImagePicker();
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
 
-  // ✅ CAMBIO CLAVE: Variable para almacenar y controlar el Future
-  late Future<UserProfile> _userProfileFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    // ✅ Inicializar el Future
-    _userProfileFuture = _fetchUserProfile();
+  String _getRamosDocPath(String uid) {
+    const appId = String.fromEnvironment(
+      'APP_ID',
+      defaultValue: 'default-app-id',
+    );
+    return 'artifacts/$appId/users/$uid/profile_data/data';
   }
 
-  // Función para obtener los datos del usuario (Auth y Firestore)
+  List<Ramo> _getRamoDetails(List<String> codes) {
+    // Busca en la lista CONSOLIDADA de todos los ramos
+    return allRamos.where((ramo) => codes.contains(ramo.code)).toList();
+  }
+
+  // 💡 FUNCIÓN COMBINADA para obtener el perfil completo (lo que antes era FutureBuilder)
   Future<UserProfile> _fetchUserProfile() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _auth.currentUser!;
 
-    if (user == null) {
-      throw Exception("Usuario no autenticado.");
-    }
+    // 1. Obtener datos del documento raíz (/users/{uid})
+    final rootDoc = await _firestore.collection('users').doc(user.uid).get();
+    final rootData = rootDoc.data() ?? {};
 
-    final docSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    // 2. Obtener datos de ramos del documento anidado (Canvas Path)
+    final ramosDocPath = _getRamosDocPath(user.uid);
+    final ramosDoc = await _firestore.doc(ramosDocPath).get();
+    final ramosData = ramosDoc.data() ?? {};
 
-    if (docSnapshot.exists) {
-      return UserProfile.fromFirestore(docSnapshot);
-    } else {
-      return UserProfile(
-        email: user.email ?? 'Email Desconocido',
-        name: user.displayName ?? 'Usuario Temporal',
-        campus: 'No Definido',
-        career: 'No Definido',
-        profileImageUrl: null,
-      );
-    }
-  }
-
-  // Función para seleccionar y subir imagen
-  Future<void> _pickAndUploadImage() async {
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debes iniciar sesión para cambiar tu foto.'),
-        ),
-      );
-      return;
-    }
-
-    try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-
-      if (image != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Subiendo imagen...')));
-        }
-
-        // 1. Subir la imagen a Firebase Storage
-        File file = File(image.path);
-        Reference storageRef = _storage
-            .ref()
-            .child('profile_pictures')
-            .child('${user.uid}.jpg');
-        UploadTask uploadTask = storageRef.putFile(file);
-
-        TaskSnapshot snapshot = await uploadTask;
-        String downloadUrl = await snapshot.ref.getDownloadURL();
-
-        // 2. Guardar la URL de descarga en Firestore
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({'profileImageUrl': downloadUrl});
-
-        if (mounted) {
-          // ✅ APLICACIÓN DEL REFRESH: Actualizar el Future para forzar la reconstrucción del FutureBuilder
-          setState(() {
-            _userProfileFuture = _fetchUserProfile();
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto de perfil actualizada con éxito!'),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al subir imagen: $e')));
-      }
-      print('Error al subir imagen: $e'); // Para depuración
-    }
-  }
-
-  // Función para cerrar sesión
-  void _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (!context.mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (Route<dynamic> route) => false,
+    // Mapeo de datos (combinando la información)
+    return UserProfile(
+      uid: user.uid,
+      email: user.email ?? 'N/A',
+      careerId: rootData['career_id'] ?? 'INF',
+      careerName: rootData['career_name'] ?? 'Ingeniería Civil Informática',
+      campus: rootData['campus'] ?? 'No Definido',
+      currentRamos:
+          (ramosData['current_ramos'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mi Perfil Académico'),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-      ),
-      body: FutureBuilder<UserProfile>(
-        // ✅ USAR EL FUTURE DE ESTADO
-        future: _userProfileFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: primaryColor),
-            );
-          }
+    final user = FirebaseAuth.instance.currentUser;
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Error al cargar el perfil: ${snapshot.error}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red),
-              ),
-            );
-          }
+    if (user == null) {
+      return const Center(
+        child: Text(
+          'Error: No hay usuario autenticado.',
+          style: TextStyle(color: Colors.red),
+        ),
+      );
+    }
 
-          if (!snapshot.hasData) {
-            return const Center(
-              child: Text('No se encontraron datos de perfil.'),
-            );
-          }
-
-          final userProfile = snapshot.data!;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // --- Sección de Avatar y Nombre ---
-                Center(
-                  child: Column(
-                    children: [
-                      // Widget para mostrar la foto de perfil
-                      InkWell(
-                        // Hace el avatar clickeable
-                        onTap: _pickAndUploadImage,
-                        child: Container(
-                          width:
-                              100, // Define un tamaño fijo para el contenedor
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color:
-                                primaryColor, // Color de fondo si no hay imagen
-                          ),
-                          child: ClipOval(
-                            child: userProfile.profileImageUrl != null
-                                ? Image.network(
-                                    userProfile.profileImageUrl!,
-                                    fit: BoxFit.cover,
-                                    // 🎯 CAMBIO CLAVE: Manejo de error al cargar la imagen de la red
-                                    errorBuilder: (context, error, stackTrace) {
-                                      // Si la imagen falla (como en 'object-not-found'), se muestra el icono
-                                      print(
-                                        'Error al cargar imagen de perfil: $error',
-                                      ); // Depuración
-                                      return const Icon(
-                                        Icons.person,
-                                        size: 60,
-                                        color: Colors.white,
-                                      );
-                                    },
-                                    // Opcional: Builder para mostrar un spinner mientras carga
-                                    loadingBuilder:
-                                        (context, child, loadingProgress) {
-                                          if (loadingProgress == null)
-                                            return child;
-                                          return Center(
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              value:
-                                                  loadingProgress
-                                                          .expectedTotalBytes !=
-                                                      null
-                                                  ? loadingProgress
-                                                            .cumulativeBytesLoaded /
-                                                        loadingProgress
-                                                            .expectedTotalBytes!
-                                                  : null,
-                                            ),
-                                          );
-                                        },
-                                  )
-                                : const Icon(
-                                    // Si profileImageUrl es null, muestra el icono por defecto
-                                    Icons.person,
-                                    size: 60,
-                                    color: Colors.white,
-                                  ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        userProfile.name,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: textColor,
-                        ),
-                      ),
-                      Text(
-                        userProfile.email,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 30),
-
-                const Divider(),
-                const SizedBox(height: 10),
-
-                // --- Información Académica ---
-                _buildInfoCard(
-                  icon: Icons.school,
-                  title: 'Carrera',
-                  value: userProfile.career,
-                ),
-                _buildInfoCard(
-                  icon: Icons.location_city,
-                  title: 'Campus',
-                  value: userProfile.campus,
-                ),
-
-                const SizedBox(height: 40),
-
-                // --- Botón Cerrar Sesión ---
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _logout(context),
-                    icon: const Icon(Icons.logout),
-                    label: const Text(
-                      'Cerrar Sesión',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: secondaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    // 💡 IMPORTANTE: Usamos FutureBuilder para el cuerpo, eliminando el Scaffold original
+    return FutureBuilder<UserProfile>(
+      future: _fetchUserProfile(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: primaryColor),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error al cargar perfil: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red),
             ),
           );
-        },
-      ),
+        }
+
+        final userProfile = snapshot.data!;
+        final selectedRamoDetails = _getRamoDetails(userProfile.currentRamos);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 💡 Header simplificado
+              _buildHeader(userProfile.email),
+              const SizedBox(height: 25),
+
+              // 💡 SOLO CARDS DE INFORMACIÓN CLAVE (Carrera y Campus)
+              _buildInfoCard(
+                'Carrera',
+                userProfile.careerName,
+                Icons.engineering,
+                primaryColor,
+              ),
+              _buildInfoCard(
+                'Campus',
+                userProfile.campus,
+                Icons.location_city,
+                primaryColor,
+              ),
+              const SizedBox(height: 30),
+
+              // Botón para editar los ramos
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => RamoSelectionScreen(
+                          careerId: userProfile.careerId,
+                          careerName: userProfile.careerName,
+                          initialRamos: userProfile.currentRamos,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.edit, size: 20),
+                  label: const Text(
+                    'Editar Ramos Actuales',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: secondaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+
+              // 💡 Lista de Ramos (Diseño Simplificado)
+              Text(
+                'Ramos Cursando (${userProfile.currentRamos.length})',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
+              ),
+              const Divider(color: grayColor, height: 15),
+
+              if (selectedRamoDetails.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10.0),
+                  child: Text(
+                    'Aún no has seleccionado ningún ramo.',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: grayColor,
+                    ),
+                  ),
+                ),
+
+              // 💡 Nuevo diseño para la lista de ramos
+              ...selectedRamoDetails
+                  .map(
+                    (ramo) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${ramo.code} - ${ramo.name}',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: textColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  // Widget auxiliar para mostrar la información en formato de lista
-  Widget _buildInfoCard({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
+  // 💡 WIDGET AUXILIAR: Encabezado simplificado
+  Widget _buildHeader(String email) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.only(bottom: 10.0),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: primaryColor, size: 24),
+          const CircleAvatar(
+            radius: 35, // Tamaño más pequeño
+            backgroundColor: primaryColor,
+            child: Icon(Icons.person, size: 40, color: Colors.white),
+          ),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
+                const Text(
+                  'Mi Perfil Académico', // Título principal para el contenido
+                  style: TextStyle(
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: textColor,
                   ),
                 ),
                 Text(
-                  value,
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  'Bienvenido, ${email}',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 💡 WIDGET AUXILIAR: Card de información
+  Widget _buildInfoCard(
+    String title,
+    String value,
+    IconData icon,
+    Color iconColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Card(
+        elevation: 0.5,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: Colors.grey[300]!, width: 1),
+        ),
+        margin: EdgeInsets.zero,
+        child: ListTile(
+          dense: true, // Hace la tarjeta más compacta
+          leading: Icon(icon, color: iconColor, size: 20),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.grey[700],
+            ),
+          ),
+          trailing: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ),
       ),
     );
   }

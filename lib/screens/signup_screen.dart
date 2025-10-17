@@ -60,7 +60,7 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _errorMessage;
   bool _agreedToTerms = false;
 
-  // 🎯 CAMPOS NUEVOS Y LISTAS PARA CARRERA Y CAMPUS
+  // 🎯 MAPEO Y LISTAS PARA CARRERA Y CAMPUS
   String? _selectedCampus;
   String? _selectedCareer;
 
@@ -80,6 +80,16 @@ class _SignupScreenState extends State<SignupScreen> {
     'Técnico Universitario',
     'Otra / No Especificada', // Opción por defecto
   ];
+
+  // 💡 NUEVO: Mapa para obtener el ID corto de la carrera
+  static const Map<String, String> _careerIdMap = {
+    'Ingeniería Civil Informática': 'INF',
+    'Ingeniería Civil Industrial': 'IND',
+    'Ingeniería Comercial': 'COM',
+    'Arquitectura': 'ARQ',
+    'Técnico Universitario': 'TEC',
+    'Otra / No Especificada': 'OTR',
+  };
   // -------------------------------------------------
 
   static const String universityDomain = '@usm.cl';
@@ -127,7 +137,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
       // 🎯 Se usan los valores seleccionados del dropdown
       final campus = _selectedCampus!;
-      final career = _selectedCareer!;
+      final careerName = _selectedCareer!;
+
+      // 💡 NUEVO: Obtener el ID de la carrera usando el mapa
+      final careerId = _careerIdMap[careerName] ?? 'OTR';
 
       // **Validación USM.cl**
       if (!email.toLowerCase().endsWith(universityDomain)) {
@@ -147,9 +160,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
         // 3. Guardar los datos iniciales en Firestore (Perfil)
         if (user != null) {
-          // Usamos un array vacío o un marcador de posición para evitar el error de serialización
-          List<String> initialCourses = ['TEMP_INIT'];
+          // 💡 OPTIMIZACIÓN: Se inicializa activeCourses como lista vacía (como se sugirió antes)
+          List<String> initialCourses = [];
 
+          // 💡 CORRECCIÓN DE CAMPOS: Usamos career_name y career_id
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
@@ -157,20 +171,17 @@ class _SignupScreenState extends State<SignupScreen> {
                 'name': name,
                 'phone': phone,
                 'email': email,
-                'career': career, // 🎯 Guardamos la carrera seleccionada
-                'campus': campus, // 🎯 Guardamos el campus seleccionado
+                'career_name': careerName, // 🎯 Nombre de la carrera
+                'career_id': careerId, // 🎯 ID de la carrera (INF, IND, etc.)
+                'campus': campus,
+                // Inicializamos los ramos activos como lista vacía.
                 'activeCourses': initialCourses,
                 'profileImageUrl': null,
                 'createdAt': FieldValue.serverTimestamp(),
               });
 
-          // Limpiar la lista (eliminar el marcador temporal)
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .update({
-                'activeCourses': FieldValue.arrayRemove(['TEMP_INIT']),
-              });
+          // 💡 OPTIMIZACIÓN: Se ELIMINA el código de borrado del marcador 'TEMP_INIT'
+          // ya que activeCourses se inicializa vacío arriba.
         }
 
         // 4. Navegar: Ir a la pantalla de éxito
