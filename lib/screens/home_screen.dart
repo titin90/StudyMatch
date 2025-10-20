@@ -304,14 +304,19 @@ class _HomeContentState extends State<_HomeContent> {
     }
 
     // Lógica para construir el Query de Firestore
-    Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
+      Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
 
-    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
-      roomsQuery = roomsQuery.where(
-        'courseCode',
-        isEqualTo: _selectedFilterRamo,
-      );
-    }
+      // Si el usuario tiene ramos inscritos, filtra por esos ramos
+      if (_userActiveCourses.isNotEmpty) {
+        // Excluye 'Mostrar Todos' del filtro
+        final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
+        roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
+      }
+
+      // Si el filtro por ramo está activo y no es 'Mostrar Todos', filtra aún más
+      if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
+        roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
+      }
 
     return Column(
       children: [
