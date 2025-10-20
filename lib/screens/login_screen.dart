@@ -15,21 +15,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   String? _errorMessage;
-
-  // Dominio de correo de la universidad
   static const String universityDomain = '@usm.cl';
 
   Future<void> _signIn() async {
     setState(() {
-      _errorMessage = null; // Limpiar mensaje de error anterior
+      _errorMessage = null;
     });
 
-    // 1. Validar el formulario y el dominio del correo
     if (_formKey.currentState!.validate()) {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
-      // **Validación USM.cl**
       if (!email.toLowerCase().endsWith(universityDomain)) {
         setState(() {
           _errorMessage =
@@ -38,25 +34,19 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 2. Intentar iniciar sesión con Firebase
       try {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
 
-        // 💡 CORRECCIÓN CRÍTICA: Redirección forzada e inmediata
-        // Navega a HomeScreen y ELIMINA todas las rutas anteriores
-        // para que la pantalla de Login no se quede "atascada".
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const HomeScreen()),
-            (Route<dynamic> route) =>
-                false, // Esto borra toda la pila de navegación
+            (Route<dynamic> route) => false,
           );
         }
       } on FirebaseAuthException catch (e) {
-        // 3. Manejar errores de Firebase
         String message;
         if (e.code == 'user-not-found' || e.code == 'wrong-password') {
           message = 'Correo o contraseña incorrectos.';
@@ -162,10 +152,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 16),
 
-                // Opción para registro
                 TextButton(
                   onPressed: () {
-                    // 💡 CORRECCIÓN: Navegación real a SignupScreen
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const SignupScreen(),

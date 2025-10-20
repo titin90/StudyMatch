@@ -1,29 +1,26 @@
-import 'package:flutter/material.dart'; // Solo si usas constructores const que lo requieren
+import 'package:flutter/material.dart';
 
-/// Define la estructura de un Ramo curricular, AHORA con ID de carrera.
+// Estructura de un Ramo
 class Ramo {
   final String code;
   final String name;
-  final String careerId; // 💡 NUEVO: ID de la Carrera (Ej: 'INF', 'IND')
-  final String year; // Año en que se cursa (para agrupar)
-  final String semester; // Semestre (I, II, III, etc.)
+  final String careerId;
+  final String year;
+  final String semester;
   final int credits;
 
   const Ramo({
     required this.code,
     required this.name,
-    required this.careerId, // Requerido para el filtrado
+    required this.careerId,
     required this.year,
     required this.semester,
-    this.credits = 5, // Valor por defecto, si no se especifica
+    this.credits = 5,
   });
 }
 
-// =========================================================================
-// Malla Curricular de Ingeniería Civil Informática (ID: 'INF')
-// =========================================================================
+// Malla Curricular de Ingeniería Civil Informática
 final List<Ramo> civilInformaticaRamos = [
-  // --- AÑO 1 ---
   const Ramo(
     code: 'IWI-131',
     name: 'Programación',
@@ -48,12 +45,6 @@ final List<Ramo> civilInformaticaRamos = [
     semester: 'I',
     credits: 4,
   ),
-  // ... (otros ramos INF)
-
-  // Aquí se simplifica el resto de la lista de INF para mantener el enfoque en la corrección
-  // 💡 NOTA: DEBES AÑADIR careerId: 'INF' A CADA RAMO EXISTENTE EN TU LISTA.
-
-  // --- EJEMPLOS DE AÑO 2-3 (Asegúrate de que tus datos originales tengan 'careerId: 'INF') ---
   const Ramo(
     code: 'INF-134',
     name: 'Estructuras de Datos',
@@ -72,10 +63,7 @@ final List<Ramo> civilInformaticaRamos = [
   ),
 ];
 
-// =========================================================================
-// Malla Curricular de Ingeniería Civil Industrial (ID: 'IND')
-// (Ramos simulados para la demostración)
-// =========================================================================
+// Malla Curricular de Ingeniería Civil Industrial
 final List<Ramo> civilIndustrialRamos = [
   // --- AÑO 1 ---
   const Ramo(
@@ -146,12 +134,8 @@ final List<Ramo> civilIndustrialRamos = [
   ),
 ];
 
-// =========================================================================
 // Lista consolidada de todos los ramos
-// 💡 Usamos esta lista para que la pantalla de selección pueda filtrar
-// =========================================================================
 final List<Ramo> allRamos = [
   ...civilInformaticaRamos,
   ...civilIndustrialRamos,
-  // ... Añade aquí otras listas de ramos (COM, ARQ, etc.)
 ];

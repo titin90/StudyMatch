@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// Importaciones requeridas
 import '../ramo_selection_screen.dart';
-import '../ramo_data.dart'; // Lista consolidada de ramos
-import 'login_screen.dart'; // Para redirigir al cerrar sesión
+import '../ramo_data.dart';
 
-// Colores definidos para consistencia
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
-// Usamos un gris más suave para la información secundaria
 const Color grayColor = Color(0xFFA7A7A7);
 const Color textColor = Color(0xFF3A3A3A);
 
-// Modelo de datos para el perfil del usuario (sin cambios lógicos)
+// Modelo de datos para el perfil del usuario
 class UserProfile {
   final String uid;
   final String email;
@@ -39,11 +35,9 @@ class UserProfile {
     return UserProfile(
       uid: uid,
       email: email,
-      // Leemos de /users/{uid} o usamos fallback
       careerId: data['career_id'] ?? 'INF',
       careerName: data['career_name'] ?? 'Ingeniería Civil Informática',
       campus: data['campus'] ?? 'No Definido',
-      // Leemos de la ruta Canvas Path para los ramos
       currentRamos:
           (data['current_ramos'] as List<dynamic>?)?.cast<String>() ?? [],
     );
@@ -70,24 +64,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   List<Ramo> _getRamoDetails(List<String> codes) {
-    // Busca en la lista CONSOLIDADA de todos los ramos
     return allRamos.where((ramo) => codes.contains(ramo.code)).toList();
   }
 
-  // 💡 FUNCIÓN COMBINADA para obtener el perfil completo (lo que antes era FutureBuilder)
+  // Obtiene el perfil completo del usuario
   Future<UserProfile> _fetchUserProfile() async {
     final user = _auth.currentUser!;
 
-    // 1. Obtener datos del documento raíz (/users/{uid})
     final rootDoc = await _firestore.collection('users').doc(user.uid).get();
     final rootData = rootDoc.data() ?? {};
 
-    // 2. Obtener datos de ramos del documento anidado (Canvas Path)
     final ramosDocPath = _getRamosDocPath(user.uid);
     final ramosDoc = await _firestore.doc(ramosDocPath).get();
     final ramosData = ramosDoc.data() ?? {};
 
-    // Mapeo de datos (combinando la información)
     return UserProfile(
       uid: user.uid,
       email: user.email ?? 'N/A',
@@ -112,7 +102,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    // 💡 IMPORTANTE: Usamos FutureBuilder para el cuerpo, eliminando el Scaffold original
     return FutureBuilder<UserProfile>(
       future: _fetchUserProfile(),
       builder: (context, snapshot) {
@@ -138,11 +127,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 💡 Header simplificado
               _buildHeader(userProfile.email),
               const SizedBox(height: 25),
 
-              // 💡 SOLO CARDS DE INFORMACIÓN CLAVE (Carrera y Campus)
               _buildInfoCard(
                 'Carrera',
                 userProfile.careerName,
@@ -157,7 +144,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              // Botón para editar los ramos
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -190,7 +176,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              // 💡 Lista de Ramos (Diseño Simplificado)
               Text(
                 'Ramos Cursando (${userProfile.currentRamos.length})',
                 style: const TextStyle(
@@ -213,7 +198,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
-              // 💡 Nuevo diseño para la lista de ramos
               ...selectedRamoDetails
                   .map(
                     (ramo) => Padding(
@@ -248,7 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 💡 WIDGET AUXILIAR: Encabezado simplificado
+  // Encabezado del perfil
   Widget _buildHeader(String email) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
@@ -265,7 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Mi Perfil Académico', // Título principal para el contenido
+                  'Mi Perfil Académico',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -285,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 💡 WIDGET AUXILIAR: Card de información
+  // Card de información
   Widget _buildInfoCard(
     String title,
     String value,
@@ -302,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         margin: EdgeInsets.zero,
         child: ListTile(
-          dense: true, // Hace la tarjeta más compacta
+          dense: true,
           leading: Icon(icon, color: iconColor, size: 20),
           title: Text(
             title,

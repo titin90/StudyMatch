@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart'; // Necesario para formatear la hora
-
-// Importamos el modelo StudyRoom que está en home_screen.dart
+import 'package:intl/intl.dart';
 import 'home_screen.dart';
 
-// --- COLORES DE STUDYMATCH ---
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
 const Color textColor = Color(0xFF3A3A3A);
 
-// --- MODELO DE MENSAJE (Adaptación simplificada) ---
+// Modelo de mensaje
 class ChatMessage {
   final String senderId;
   final String senderName;
@@ -25,7 +22,7 @@ class ChatMessage {
       timestamp = doc['timestamp'] ?? Timestamp.now();
 }
 
-// --- PANTALLA DE CHAT ---
+// Pantalla de chat
 class ChatRoomScreen extends StatefulWidget {
   final StudyRoom room;
 
@@ -39,32 +36,28 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // Nombre del usuario actual para mostrar en el mensaje
   String _currentUserName = 'Usuario';
 
   @override
   void initState() {
     super.initState();
-    // Carga el nombre del usuario desde Firestore
     _loadCurrentUserName();
   }
 
-  // Función para cargar el nombre del usuario loggeado
+  // Carga el nombre del usuario
   void _loadCurrentUserName() async {
     final userId = _auth.currentUser?.uid;
     if (userId != null) {
       final doc = await _firestore.collection('users').doc(userId).get();
       if (doc.exists) {
         setState(() {
-          // Asume que el nombre del usuario está en el campo 'name'
           _currentUserName = doc['name'] ?? 'Usuario';
         });
       }
     }
   }
 
-  // Función para enviar el mensaje
+  // Envía un mensaje
   void _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -72,22 +65,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
 
-    // Obtener la referencia a la colección de mensajes de la sala
     final roomMessagesRef = _firestore
         .collection('study_rooms')
         .doc(widget.room.id)
         .collection('messages');
 
-    // Crea el objeto del mensaje
     await roomMessagesRef.add({
       'text': text,
       'senderId': userId,
       'senderName': _currentUserName,
-      'timestamp':
-          FieldValue.serverTimestamp(), // Usa el timestamp del servidor
+      'timestamp': FieldValue.serverTimestamp(),
     });
 
-    // Limpia el campo de texto
     _messageController.clear();
   }
 
@@ -95,21 +84,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Título de la sala: Código del Ramo y Tema
         title: Text(widget.room.name),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: <Widget>[
-          // Área de mensajes (StreamBuilder para tiempo real)
+          // Área de mensajes
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _firestore
                   .collection('study_rooms')
                   .doc(widget.room.id)
                   .collection('messages')
-                  // Ordenar por timestamp para mostrar el más reciente abajo
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
@@ -123,20 +110,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                // Si no hay mensajes
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(
                     child: Text('Sé el primero en iniciar la conversación!'),
                   );
                 }
 
-                // Mapear documentos a objetos ChatMessage
                 final messages = snapshot.data!.docs
                     .map((doc) => ChatMessage.fromFirestore(doc))
                     .toList();
 
                 return ListView.builder(
-                  reverse: true, // Muestra los mensajes de abajo hacia arriba
+                  reverse: true,
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     return _MessageBubble(
@@ -149,14 +134,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
           ),
 
-          // Campo de entrada de mensaje
           _buildMessageInput(),
         ],
       ),
     );
   }
 
-  // Widget para el campo de entrada de mensaje
+  // Campo de entrada de mensaje
   Widget _buildMessageInput() {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -179,6 +163,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
           ),
           const SizedBox(width: 8.0),
+
           // Botón de envío
           FloatingActionButton(
             onPressed: _sendMessage,
@@ -193,17 +178,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-// --- WIDGET PARA LA BURBUJA DE MENSAJE ---
+// Widget para la burbuja de mensaje
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMe;
 
   const _MessageBubble({required this.message, required this.isMe});
 
-  // Formatea el Timestamp a una hora legible (Ej: 1:08 AM)
+  // Formatea el Timestamp a hora legible
   String _formatTime(Timestamp timestamp) {
-    // Maneja el caso en que el timestamp sea nulo (e.g., mensaje recién enviado sin serverTimestamp)
-    if (timestamp == null) return '';
     final DateTime date = timestamp.toDate();
     return DateFormat('h:mm a').format(date);
   }
@@ -217,7 +200,6 @@ class _MessageBubble extends StatelessWidget {
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: <Widget>[
-          // Nombre del remitente (solo si no es el usuario actual)
           if (!isMe)
             Padding(
               padding: const EdgeInsets.only(bottom: 2.0, left: 8.0),
@@ -231,7 +213,7 @@ class _MessageBubble extends StatelessWidget {
               ),
             ),
 
-          // La burbuja de texto
+          // Burbuja de texto
           Material(
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(15.0),

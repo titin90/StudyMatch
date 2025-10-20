@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-// Importamos la lista consolidada de ramos para buscar el nombre
-import 'package:collection/collection.dart'; // 💡 NECESARIO: Importar para usar firstWhereOrNull
-import '../ramo_data.dart'; // Asegúrate de que este path es correcto
+import 'package:collection/collection.dart';
+import '../ramo_data.dart';
 
-// Colores de StudyMatch
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
-const Color textColor = Color(0xFF3A3A3A); // Color de texto oscuro
+const Color textColor = Color(0xFF3A3A3A);
 
 class CreateRoomScreen extends StatefulWidget {
   const CreateRoomScreen({super.key});
@@ -22,19 +20,16 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
-  // Campos del formulario
   String? _selectedCourseCode;
   String _topic = '';
-  String _campus = 'Campus San Joaquín'; // Valor inicial
+  String _campus = 'Campus San Joaquín';
   String _type = 'Online';
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
-
-  // 💡 Lista de códigos de ramos activos del usuario
   List<String> _userActiveCourses = [];
 
-  // FUNCIÓN REQUERIDA POR CANVAS: Genera la ruta de 6 segmentos para Ramos
+  // Genera la ruta para Ramos
   String _getRamosDocPath(String uid) {
     const appId = String.fromEnvironment(
       'APP_ID',
@@ -43,10 +38,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     return 'artifacts/$appId/users/$uid/profile_data/data';
   }
 
-  // Opciones predefinidas
   final List<String> _studyTypes = ['Online', 'Presencial'];
-
-  // Lista de campus
   final List<String> _campuses = [
     'Campus San Joaquín',
     'Campus Casa Central',
@@ -57,10 +49,10 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInitialData(); // Carga ramos y campus al inicio
+    _loadInitialData();
   }
 
-  // 💡 FUNCIÓN: Carga los ramos activos y el campus del usuario
+  // Carga los ramos activos y el campus del usuario
   void _loadInitialData() async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -68,21 +60,16 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Cargar campus (del documento raíz)
       final rootDoc = await _firestore.collection('users').doc(userId).get();
       final rootData = rootDoc.data();
 
-      // 2. Cargar ramos activos (del documento Canvas Path)
       final ramosDocPath = _getRamosDocPath(userId);
       final ramosDoc = await _firestore.doc(ramosDocPath).get();
       final ramosData = ramosDoc.data();
 
       if (mounted) {
         setState(() {
-          // Si el usuario tiene un campus en su perfil, lo usamos como valor predeterminado
           _campus = rootData?['campus'] ?? 'Campus San Joaquín';
-
-          // Si hay ramos guardados, los cargamos
           _userActiveCourses =
               (ramosData?['current_ramos'] as List<dynamic>?)
                   ?.cast<String>()
@@ -103,9 +90,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     }
   }
 
-  // Función para guardar la sala de estudio en Firestore
+  // Guardar la sala en Firestore
   Future<void> _createStudyRoom() async {
-    // 💡 VALIDACIÓN: Aseguramos que se haya seleccionado un ramo
     if (_selectedCourseCode == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,7 +112,6 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
       _isLoading = true;
     });
 
-    // Combina la fecha y hora seleccionadas en un único Timestamp
     final DateTime scheduledDateTime = DateTime(
       _selectedDate.year,
       _selectedDate.month,
@@ -135,8 +120,6 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
       _selectedTime.minute,
     );
 
-    // Obtenemos el nombre completo del ramo para mostrarlo en las tarjetas
-    // Usamos el helper de colección para evitar un error si no encuentra el ramo.
     final Ramo? fullRamo = allRamos.firstWhereOrNull(
       (r) => r.code == _selectedCourseCode,
     );
@@ -146,15 +129,14 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
       await _firestore.collection('study_rooms').add({
         'creatorId': _auth.currentUser!.uid,
         'creatorEmail': _auth.currentUser!.email,
-        'courseCode':
-            _selectedCourseCode, // Usamos el código de ramo seleccionado
-        'courseName': courseName, // Guardamos el nombre del ramo
+        'courseCode': _selectedCourseCode,
+        'courseName': courseName,
         'topic': _topic,
         'campus': _campus,
         'type': _type,
         'scheduledTime': Timestamp.fromDate(scheduledDateTime),
         'createdAt': FieldValue.serverTimestamp(),
-        'members': [_auth.currentUser!.uid], // El creador es el primer miembro
+        'members': [_auth.currentUser!.uid],
         'status': 'active',
       });
 
@@ -162,7 +144,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Sala de estudio creada con éxito!')),
         );
-        Navigator.of(context).pop(); // Vuelve a la pantalla de inicio
+        Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
@@ -179,12 +161,12 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     }
   }
 
-  // Diálogo para seleccionar la fecha (Sin cambios)
+  // Diálogo para seleccionar fecha
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 0)), // Hoy
+      firstDate: DateTime.now().subtract(const Duration(days: 0)),
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
     if (picked != null && picked != _selectedDate) {
@@ -194,7 +176,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     }
   }
 
-  // Diálogo para seleccionar la hora (Sin cambios)
+  // Diálogo para seleccionar hora
   Future<void> _selectTime(BuildContext context) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -209,10 +191,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Preparamos los items del dropdown (códigos de los ramos)
     final List<String> availableCourses = _userActiveCourses;
 
-    // Si no hay ramos activos, mostramos la pantalla de bloqueo
     if (_userActiveCourses.isEmpty && !_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -272,7 +252,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              // 💡 Dropdown para seleccionar el Ramo
+              // Dropdown para seleccionar el Ramo
               _buildDropdownField(
                 label: 'Ramo a Estudiar',
                 value: _selectedCourseCode,
@@ -286,7 +266,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Campo: Tema (Topic)
+              // Tema
               _buildTextFormField(
                 label: 'Tema Específico (Ej: Árboles Binarios, Certamen 1)',
                 onSave: (val) => _topic = val!,
@@ -294,7 +274,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Dropdown: Campus
+              // Campus
               _buildDropdownField(
                 label: 'Campus/Ubicación',
                 value: _campus,
@@ -308,7 +288,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Dropdown: Tipo (Online/Presencial)
+              // Tipo de estudio
               _buildDropdownField(
                 label: 'Tipo de Estudio',
                 value: _type,
@@ -322,7 +302,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Seleccion de Fecha y Hora (Sin cambios)
+              // Fecha y hora
               const Text(
                 'Fecha y Hora Programada',
                 style: TextStyle(
@@ -385,7 +365,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     );
   }
 
-  // Helper para TextField (Sin cambios)
+  // Helper para TextField
   Widget _buildTextFormField({
     required String label,
     required void Function(String?) onSave,

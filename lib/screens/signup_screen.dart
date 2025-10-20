@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart';
-import 'home_screen.dart'; // Usaremos HomeScreen como destino final
+import 'home_screen.dart';
 
-// -----------------------------------------------------------------------------
-// PANTALLA TEMPORAL DE PLACEHOLDER (Redirección post-registro)
-// -----------------------------------------------------------------------------
+// Pantalla de redirección post-registro
 class PlaceholderScreen extends StatelessWidget {
   final String title;
-  const PlaceholderScreen({super.key, required final this.title});
+  const PlaceholderScreen({super.key, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +38,7 @@ class PlaceholderScreen extends StatelessWidget {
   }
 }
 
-// -----------------------------------------------------------------------------
-// PANTALLA PRINCIPAL DE REGISTRO (SIGNUP)
-// -----------------------------------------------------------------------------
+// Pantalla principal de registro
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -51,7 +47,6 @@ class SignupScreen extends StatefulWidget {
 }
 
 class _SignupScreenState extends State<SignupScreen> {
-  // Controladores de campos de texto
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
@@ -59,8 +54,6 @@ class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _errorMessage;
   bool _agreedToTerms = false;
-
-  // 🎯 MAPEO Y LISTAS PARA CARRERA Y CAMPUS
   String? _selectedCampus;
   String? _selectedCareer;
 
@@ -69,7 +62,7 @@ class _SignupScreenState extends State<SignupScreen> {
     'Campus San Joaquín',
     'Campus Vitacura',
     'Online',
-    'No Definido', // Opción por defecto
+    'No Definido',
   ];
 
   final List<String> _careers = [
@@ -78,10 +71,10 @@ class _SignupScreenState extends State<SignupScreen> {
     'Ingeniería Comercial',
     'Arquitectura',
     'Técnico Universitario',
-    'Otra / No Especificada', // Opción por defecto
+    'Otra / No Especificada',
   ];
 
-  // 💡 NUEVO: Mapa para obtener el ID corto de la carrera
+  // Mapa para obtener el ID de la carrera
   static const Map<String, String> _careerIdMap = {
     'Ingeniería Civil Informática': 'INF',
     'Ingeniería Civil Industrial': 'IND',
@@ -90,11 +83,8 @@ class _SignupScreenState extends State<SignupScreen> {
     'Técnico Universitario': 'TEC',
     'Otra / No Especificada': 'OTR',
   };
-  // -------------------------------------------------
 
   static const String universityDomain = '@usm.cl';
-
-  // Colores de la app
   static const Color primaryColor = Color(0xFF0560FA);
   static const Color secondaryColor = Color(0xFFEC8000);
 
@@ -114,7 +104,6 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     if (_formKey.currentState!.validate()) {
-      // 🎯 1. VALIDACIÓN DE DROPDOWNS: Deben estar seleccionados
       if (_selectedCampus == null || _selectedCareer == null) {
         setState(() {
           _errorMessage = 'Por favor, selecciona tu Campus y Carrera.';
@@ -128,21 +117,15 @@ class _SignupScreenState extends State<SignupScreen> {
         });
         return;
       }
-      // -------------------------------------------------------
 
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
       final name = _fullNameController.text.trim();
       final phone = _phoneController.text.trim();
-
-      // 🎯 Se usan los valores seleccionados del dropdown
       final campus = _selectedCampus!;
       final careerName = _selectedCareer!;
-
-      // 💡 NUEVO: Obtener el ID de la carrera usando el mapa
       final careerId = _careerIdMap[careerName] ?? 'OTR';
 
-      // **Validación USM.cl**
       if (!email.toLowerCase().endsWith(universityDomain)) {
         setState(() {
           _errorMessage =
@@ -151,19 +134,15 @@ class _SignupScreenState extends State<SignupScreen> {
         return;
       }
 
-      // 2. Intentar crear el usuario con Firebase AUTH
       try {
         final userCredential = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(email: email, password: password);
 
         final user = userCredential.user;
 
-        // 3. Guardar los datos iniciales en Firestore (Perfil)
         if (user != null) {
-          // 💡 OPTIMIZACIÓN: Se inicializa activeCourses como lista vacía (como se sugirió antes)
           List<String> initialCourses = [];
 
-          // 💡 CORRECCIÓN DE CAMPOS: Usamos career_name y career_id
           await FirebaseFirestore.instance
               .collection('users')
               .doc(user.uid)
@@ -171,20 +150,15 @@ class _SignupScreenState extends State<SignupScreen> {
                 'name': name,
                 'phone': phone,
                 'email': email,
-                'career_name': careerName, // 🎯 Nombre de la carrera
-                'career_id': careerId, // 🎯 ID de la carrera (INF, IND, etc.)
+                'career_name': careerName,
+                'career_id': careerId,
                 'campus': campus,
-                // Inicializamos los ramos activos como lista vacía.
                 'activeCourses': initialCourses,
                 'profileImageUrl': null,
                 'createdAt': FieldValue.serverTimestamp(),
               });
-
-          // 💡 OPTIMIZACIÓN: Se ELIMINA el código de borrado del marcador 'TEMP_INIT'
-          // ya que activeCourses se inicializa vacío arriba.
         }
 
-        // 4. Navegar: Ir a la pantalla de éxito
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
@@ -193,7 +167,6 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         );
       } on FirebaseAuthException catch (e) {
-        // Manejo de errores de Firebase Auth
         String message;
         if (e.code == 'weak-password') {
           message = 'La contraseña es demasiado débil (mínimo 6 caracteres).';
@@ -206,7 +179,6 @@ class _SignupScreenState extends State<SignupScreen> {
           _errorMessage = message;
         });
       } catch (e) {
-        // Manejo de errores generales
         print('Error al guardar datos en Firestore: $e');
         setState(() {
           _errorMessage = 'Ocurrió un error inesperado al guardar el perfil.';
@@ -215,7 +187,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  // 🎯 WIDGET HELPER para crear el DropdownButtonFormField de forma limpia
+  // Widget helper para crear dropdowns
   Widget _buildDropdownField({
     required String labelText,
     required String? value,
@@ -237,7 +209,6 @@ class _SignupScreenState extends State<SignupScreen> {
       hint: Text(hintText),
       value: value,
       isExpanded: true,
-      // Validación: el valor no puede ser nulo
       validator: (val) => val == null ? 'Selección obligatoria' : null,
       onChanged: onChanged,
       items: items.map<DropdownMenuItem<String>>((String item) {
@@ -245,7 +216,6 @@ class _SignupScreenState extends State<SignupScreen> {
       }).toList(),
     );
   }
-  // -------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +272,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 3. Institutional Email Address (@usm.cl)
+                // Institutional Email
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
@@ -323,7 +293,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 4. Password
+                // Password
                 TextFormField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
@@ -338,7 +308,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 🎯 5. CAMPO CARRERA
+                // Carrera
                 _buildDropdownField(
                   labelText: 'Carrera',
                   value: _selectedCareer,
@@ -353,7 +323,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // 🎯 6. CAMPO CAMPUS
+                // Campus
                 _buildDropdownField(
                   labelText: 'Campus',
                   value: _selectedCampus,
@@ -368,7 +338,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Checkbox de Términos y Condiciones
+                // Checkbox de términos
                 Row(
                   children: [
                     Checkbox(
@@ -400,7 +370,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Mensaje de Error (si existe)
+                // Mensaje de error
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16.0),
@@ -414,7 +384,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
 
-                // Botón de Sign Up
+                // Botón Sign Up
                 ElevatedButton(
                   onPressed: _signUp,
                   style: ElevatedButton.styleFrom(

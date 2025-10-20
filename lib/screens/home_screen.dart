@@ -1,29 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-// Importaciones requeridas
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
 import 'chat_room_screen.dart';
 
-// --- COLORES DE STUDYMATCH ---
 const Color primaryColor = Color(0xFF0560FA);
 const Color secondaryColor = Color(0xFFEC8000);
-const Color textColor = Color(0xFF3A3A3A); // Color de texto oscuro
+const Color textColor = Color(0xFF3A3A3A);
 
-// 💡 FUNCIÓN GLOBAL: Ruta de perfil para verificar ramos
+// Ruta de perfil para verificar ramos
 String _getRamosDocPath(String uid) {
   const appId = String.fromEnvironment(
     'APP_ID',
     defaultValue: 'default-app-id',
   );
-  // Esta ruta apunta al documento donde se guardan los ramos activos del usuario.
   return 'artifacts/$appId/users/$uid/profile_data/data';
 }
 
-// --- MODELO DE DATOS DE LA SALA (ROOM) ---
+// Modelo de datos de la sala
 class StudyRoom {
   final String id;
   final String courseCode;
@@ -47,16 +43,13 @@ class StudyRoom {
   String get name => '$courseCode: $topic';
 }
 
-// --- LÓGICA DE UNIÓN Y VERIFICACIÓN DE RAMOS (AUXILIARES) ---
-
-// 💡 FUNCIÓN AUXILIAR: Ejecuta la lógica de unión (actualiza Firestore y navega)
+// Ejecuta la lógica de unión a la sala
 Future<void> _performJoin(
   BuildContext context,
   String userId,
   String roomId,
   Map<String, dynamic> roomData,
 ) async {
-  // [Lógica de _performJoin sin cambios]
   if (roomData['members'] != null &&
       (roomData['members'] as List).contains(userId)) {
     if (context.mounted) {
@@ -103,7 +96,7 @@ Future<void> _performJoin(
   }
 }
 
-// 💡 FUNCIÓN PRINCIPAL: Verifica la membresía del ramo antes de llamar a _performJoin
+// Verifica la membresía del ramo antes de unirse
 Future<void> _checkAndJoinRoom(
   BuildContext context,
   Map<String, dynamic> roomData,
@@ -161,7 +154,7 @@ Future<void> _checkAndJoinRoom(
   }
 }
 
-// --- PANTALLA PRINCIPAL (HOMESCREEN) Y WIDGETS AUXILIARES ---
+// Pantalla principal
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -170,7 +163,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // [Resto del código de HomeScreenState sin cambios]
   int _selectedIndex = 0;
 
   late final List<Widget> _widgetOptions = <Widget>[
@@ -246,10 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// -----------------------------------------------------------
-// --- WIDGET DE CONTENIDO DE LA PESTAÑA HOME (MODIFICADO) ---
-// -----------------------------------------------------------
-
+// Widget de contenido de la pestaña Home
 class _HomeContent extends StatefulWidget {
   final VoidCallback onCreateRoomTapped;
 
@@ -273,7 +262,7 @@ class _HomeContentState extends State<_HomeContent> {
     _loadActiveCourses();
   }
 
-  // 💡 FUNCIÓN: Carga los ramos activos del usuario para usarlos como filtro
+  // Carga los ramos activos del usuario para usarlos como filtro
   Future<void> _loadActiveCourses() async {
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
@@ -290,7 +279,6 @@ class _HomeContentState extends State<_HomeContent> {
                   ?.cast<String>()
                   .toList() ??
               [];
-          // Añadir la opción 'Mostrar Todos' y seleccionarla por defecto
           _userActiveCourses.insert(0, 'Mostrar Todos');
           _selectedFilterRamo = _userActiveCourses.first;
           _isLoading = false;
@@ -315,23 +303,18 @@ class _HomeContentState extends State<_HomeContent> {
       );
     }
 
-    // 💡 Lógica para construir el Query de Firestore
+    // Lógica para construir el Query de Firestore
     Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
 
-    // Aplicar filtro si se seleccionó un ramo específico
-    // NOTA: No aplicamos .orderBy() nunca para evitar el error de índice compuesto.
     if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
       roomsQuery = roomsQuery.where(
         'courseCode',
         isEqualTo: _selectedFilterRamo,
       );
     }
-    // ¡Eliminamos la ordenación roomsQuery = roomsQuery.orderBy('createdAt', descending: true);!
-    // Firestore usará el orden por defecto.
 
     return Column(
       children: [
-        // 💡 CAMBIO: Usar Dropdown para filtrar en lugar del TextField de búsqueda
         _buildHeader(context),
 
         const Padding(
@@ -355,7 +338,7 @@ class _HomeContentState extends State<_HomeContent> {
         // StreamBuilder para la lista de salas filtrada
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: roomsQuery.snapshots(), // Usamos el Query simplificado
+            stream: roomsQuery.snapshots(),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(
@@ -396,15 +379,12 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  // ... El resto del código (_buildHeader, _StudyRoomCard, etc.) sigue igual.
-
-  // 💡 WIDGET: Reemplaza el campo de búsqueda por el Dropdown de Filtro
+  // Dropdown de Filtro y botón de crear sala
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // Dropdown para seleccionar el Ramo (Filtro)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
             decoration: BoxDecoration(
@@ -447,7 +427,6 @@ class _HomeContentState extends State<_HomeContent> {
           ),
           const SizedBox(height: 16),
 
-          // Botón Crear Sala (Estilo tarjeta)
           InkWell(
             onTap: widget.onCreateRoomTapped,
             child: Container(
@@ -490,27 +469,19 @@ class _HomeContentState extends State<_HomeContent> {
   }
 }
 
-// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
-// En home_screen.dart
-
-// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
-// En home_screen.dart
-
-// --- WIDGET PARA LA CARD DE SALA (LÓGICA UNIFICADA DE ACCESO) ---
+// Widget para la card de sala
 class _StudyRoomCard extends StatelessWidget {
   final StudyRoom room;
 
   const _StudyRoomCard({required this.room});
 
-  // FUNCIÓN: Unirse y Navegar al mismo tiempo (Lógica de verificación sin cambios)
+  // Unirse y navegar a la sala
   void _handleRoomAction(BuildContext context, bool isMember) async {
     final roomData = room.rawData;
     final roomId = room.id;
 
-    // Ejecutar la verificación de ramo y la lógica de unión/navegación
     await _checkAndJoinRoom(context, roomData, roomId);
 
-    // Navegamos si ya es miembro
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId != null && room.members.contains(userId)) {
       if (context.mounted) {
@@ -536,10 +507,7 @@ class _StudyRoomCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: primaryColor,
       child: ListTile(
-        onTap: cardOnTap, // Acción completa: Unirse/Navegar
-
-        // 💡 CAMBIO 1: Eliminamos el leading para quitar el "cuadrado blanco"
-        // leading: ...
+        onTap: cardOnTap,
         title: Text(
           room.name,
           style: const TextStyle(
@@ -578,10 +546,8 @@ class _StudyRoomCard extends StatelessWidget {
           ],
         ),
 
-        // 💡 CAMBIO 2 y 3: LÓGICA DEL BOTÓN DERECHO (Flecha de navegación con cambio de color)
         trailing: Icon(
           Icons.arrow_forward_ios_rounded,
-          // Color verde si es miembro, color blanco si no lo es
           color: isMember ? const Color(0xFF4CAF50) : Colors.white,
           size: 24,
         ),
