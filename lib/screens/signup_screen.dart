@@ -235,12 +235,12 @@ class _SignupScreenState extends State<SignupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Create an account',
+                  'Crear una Nueva Cuenta',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Complete the sign up process to get started',
+                  'Completa el proceso de registro para comenzar',
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 48),
@@ -262,7 +262,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _phoneController,
                   decoration: const InputDecoration(
-                    labelText: 'Phone Number',
+                    labelText: 'Teléfono',
                     prefixIcon: Icon(Icons.phone),
                     border: OutlineInputBorder(),
                   ),
@@ -276,7 +276,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
-                    labelText: 'Institutional Email Address (@usm.cl)',
+                    labelText: 'Correo Electrónico Institucional (@usm.cl)',
                     prefixIcon: Icon(Icons.email),
                     border: OutlineInputBorder(),
                   ),
@@ -358,7 +358,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           });
                         },
                         child: Text(
-                          'By ticking this box, you agree to our Terms and conditions and private policy',
+                          'Al marcar esta casilla, aceptas nuestros Términos y condiciones y la política de privacidad',
                           style: TextStyle(
                             color: Colors.grey[700],
                             fontSize: 13.0,
@@ -395,7 +395,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('Sign Up', style: TextStyle(fontSize: 18)),
+                  child: const Text('Registrarse', style: TextStyle(fontSize: 18)),
                 ),
 
                 const SizedBox(height: 16),
@@ -404,7 +404,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('Already have an account?'),
+                    const Text('¿Ya tienes una cuenta?'),
                     TextButton(
                       onPressed: () {
                         // Navega a la pantalla de Login

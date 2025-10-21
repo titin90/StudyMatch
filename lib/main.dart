@@ -10,7 +10,7 @@ void main() async {
   runApp(const StudyMatchApp());
 }
 
-const Color primaryColor = Color(0xFF0560FA);
+const Color primaryColor = Color(0xFF303F9F);
 
 class StudyMatchApp extends StatelessWidget {
   const StudyMatchApp({super.key});
