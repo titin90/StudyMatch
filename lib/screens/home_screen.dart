@@ -304,19 +304,20 @@ class _HomeContentState extends State<_HomeContent> {
     }
 
     // Lógica para construir el Query de Firestore
-      Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
+    Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
 
-      // Si el usuario tiene ramos inscritos, filtra por esos ramos
-      if (_userActiveCourses.isNotEmpty) {
-        // Excluye 'Mostrar Todos' del filtro
-        final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
-        roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
-      }
+    // Excluye 'Mostrar Todos' para obtener la lista de ramos reales
+    final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
 
-      // Si el filtro por ramo está activo y no es 'Mostrar Todos', filtra aún más
-      if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
-        roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
-      }
+    // Si el usuario seleccionó un ramo específico (no 'Mostrar Todos')
+    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
+      roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
+    } 
+    // Si seleccionó 'Mostrar Todos' y tiene ramos inscritos, filtra por sus ramos
+    else if (ramosFiltrados.isNotEmpty) {
+      roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
+    }
+    // Si no tiene ramos inscritos, no aplicamos filtro (mostrará todas las salas)
 
     return Column(
       children: [
@@ -356,12 +357,28 @@ class _HomeContentState extends State<_HomeContent> {
                 );
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                String mensaje;
+                final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
+                
+                if (ramosFiltrados.isEmpty) {
+                  mensaje = 'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas disponibles.';
+                } else if (_selectedFilterRamo == 'Mostrar Todos') {
+                  mensaje = 'No hay salas disponibles para tus ramos.\n¡Crea una!';
+                } else {
+                  mensaje = 'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
+                }
+                
                 return Center(
-                  child: Text(
-                    _selectedFilterRamo == 'Mostrar Todos'
-                        ? 'No hay salas de estudio disponibles. ¡Crea una!'
-                        : 'No hay salas para el ramo seleccionado.',
-                    style: const TextStyle(color: primaryColor),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      mensaje,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: primaryColor,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 );
               }
