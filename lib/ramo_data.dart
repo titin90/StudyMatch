@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 // Estructura de un Ramo
 class Ramo {
   final String code;

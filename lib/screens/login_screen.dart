@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
+import '../constants/colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -69,7 +70,11 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Iniciar Sesión')),
+      appBar: AppBar(
+        title: const Text('Iniciar Sesión'),
+        backgroundColor: primaryColor,
+        foregroundColor: textIconColor,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32.0),
@@ -86,16 +91,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   'Usa tu correo institucional $universityDomain',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey),
+                  style: const TextStyle(color: secondaryTextColor),
                 ),
                 const SizedBox(height: 48),
 
                 // Campo de Correo
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Correo Electrónico (USM)',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: primaryColor, width: 2),
+                    ),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
@@ -110,9 +118,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Campo de Contraseña
                 TextFormField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: primaryColor, width: 2),
+                    ),
                   ),
                   obscureText: true,
                   validator: (value) {
@@ -131,7 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(
                       _errorMessage!,
                       style: const TextStyle(
-                        color: Colors.red,
+                        color: accentColor,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
@@ -142,6 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ElevatedButton(
                   onPressed: _signIn,
                   style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: textIconColor,
                     minimumSize: const Size(
                       double.infinity,
                       50,
@@ -160,6 +173,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     );
                   },
+                  style: TextButton.styleFrom(
+                    foregroundColor: primaryColor,
+                  ),
                   child: const Text('¿No tienes cuenta? Regístrate aquí'),
                 ),
               ],

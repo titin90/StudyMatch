@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../constants/colors.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
 import 'chat_room_screen.dart';
-
-const Color primaryColor = Color(0xFF0560FA);
-const Color secondaryColor = Color(0xFFEC8000);
-const Color textColor = Color(0xFF3A3A3A);
 
 // Ruta de perfil para verificar ramos
 String _getRamosDocPath(String uid) {
@@ -205,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (_selectedIndex == 1) {
       title = 'Notificaciones';
     } else if (_selectedIndex == 0) {
-      title = 'Home';
+      title = 'Inicio';
     }
 
     return Scaffold(
@@ -418,7 +415,7 @@ class _HomeContentState extends State<_HomeContent> {
                 value: _selectedFilterRamo,
                 hint: const Text('Filtrar por Ramo'),
                 isExpanded: true,
-                icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                icon: Icon(Icons.arrow_drop_down, color: primaryColor),
                 onChanged: (String? newValue) {
                   setState(() {
                     _selectedFilterRamo = newValue;

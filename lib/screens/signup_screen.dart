@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../constants/colors.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -85,8 +86,6 @@ class _SignupScreenState extends State<SignupScreen> {
   };
 
   static const String universityDomain = '@usm.cl';
-  static const Color primaryColor = Color(0xFF0560FA);
-  static const Color secondaryColor = Color(0xFFEC8000);
 
   @override
   void dispose() {
@@ -297,7 +296,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'Contraseña',
                     prefixIcon: Icon(Icons.lock),
                     border: OutlineInputBorder(),
                   ),
@@ -415,7 +414,7 @@ class _SignupScreenState extends State<SignupScreen> {
                         );
                       },
                       child: Text(
-                        'Sign in',
+                        'Iniciar Sesión',
                         style: TextStyle(
                           color: secondaryColor,
                           fontWeight: FontWeight.bold,

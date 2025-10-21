@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'constants/colors.dart';
 import 'ramo_data.dart';
-
-const Color primaryColor = Color(0xFF303F9F);
-const Color secondaryColor = Color(0xFFFF5722);
-const Color textColor = Color(0xFF212121);
 
 class RamoSelectionScreen extends StatefulWidget {
   final String careerId;
@@ -201,7 +198,7 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
                       final isSelected = _selectedRamos.contains(ramo.code);
 
                       return ListTile(
-                        leading: const Icon(Icons.class_, color: primaryColor),
+                        leading: Icon(Icons.class_, color: primaryColor),
                         title: Text(
                           ramo.name,
                           style: const TextStyle(fontWeight: FontWeight.bold),

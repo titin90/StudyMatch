@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:collection/collection.dart';
+import '../constants/colors.dart';
 import '../ramo_data.dart';
-
-const Color primaryColor = Color(0xFF0560FA);
-const Color secondaryColor = Color(0xFFEC8000);
-const Color textColor = Color(0xFF3A3A3A);
 
 class CreateRoomScreen extends StatefulWidget {
   const CreateRoomScreen({super.key});
@@ -206,7 +203,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.warning, size: 50, color: secondaryColor),
+                Icon(Icons.warning, size: 50, color: secondaryColor),
                 const SizedBox(height: 16),
                 const Text(
                   'Aún no tienes ramos activos.',

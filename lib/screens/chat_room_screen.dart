@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../constants/colors.dart';
 import 'home_screen.dart';
-
-const Color primaryColor = Color(0xFF0560FA);
-const Color secondaryColor = Color(0xFFEC8000);
-const Color textColor = Color(0xFF3A3A3A);
 
 // Modelo de mensaje
 class ChatMessage {

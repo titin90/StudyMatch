@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'constants/colors.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -9,8 +10,6 @@ void main() async {
   await Firebase.initializeApp();
   runApp(const StudyMatchApp());
 }
-
-const Color primaryColor = Color(0xFF303F9F);
 
 class StudyMatchApp extends StatelessWidget {
   const StudyMatchApp({super.key});
