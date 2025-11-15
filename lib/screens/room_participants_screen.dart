@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../constants/colors.dart';
 import 'home_screen.dart';
+import 'user_profile.dart';
 
 class RoomParticipantsScreen extends StatefulWidget {
   final StudyRoom room;
@@ -269,6 +270,89 @@ class _RoomParticipantsScreenState extends State<RoomParticipantsScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
+    }
+  }
+
+  // View a user's profile screen
+  void _viewUserProfile(String userId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => UserProfileScreen(userId: userId)),
+    );
+  }
+
+  // Report a user: create a doc at users/{userId}/reports/{reporterId}
+  // and increment reportsCount on the user document (transactional, idempotent)
+  Future<void> _reportUser(String userId) async {
+    final reporterId = _auth.currentUser?.uid;
+    if (reporterId == null) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Debes iniciar sesión para reportar')),
+        );
+      return;
+    }
+
+    if (reporterId == userId) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No puedes reportarte a ti mismo')),
+        );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reportar usuario'),
+        content: const Text(
+          '¿Estás seguro que quieres reportar a este usuario? Se registrará una denuncia.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Reportar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final userDocRef = _firestore.collection('users').doc(userId);
+    final reportDocRef = userDocRef.collection('reports').doc(reporterId);
+
+    try {
+      await _firestore.runTransaction((tx) async {
+        // 1. TODAS las lecturas primero
+        final reportSnap = await tx.get(reportDocRef);
+        final userSnap = await tx.get(userDocRef);
+
+        // Si ya existe el reporte → no hacer nada
+        if (reportSnap.exists) return;
+
+        // 2. AHORA sí escribir
+        tx.set(reportDocRef, {
+          'reporterId': reporterId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        final current = (userSnap.data()?['reportsCount'] as int?) ?? 0;
+
+        tx.update(userDocRef, {'reportsCount': current + 1});
+      });
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Usuario reportado.')));
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al reportar: $e')));
     }
   }
 
@@ -597,15 +681,38 @@ class _RoomParticipantsScreenState extends State<RoomParticipantsScreen> {
                         ),
                         title: Text(displayName),
                         subtitle: email.isNotEmpty ? Text(email) : null,
-                        trailing: _isCreator && id != widget.room.creatorId
-                            ? IconButton(
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isCreator && id != widget.room.creatorId)
+                              IconButton(
                                 icon: const Icon(Icons.remove_circle),
                                 color: secondaryColor,
                                 onPressed: () => _removeParticipant(id),
-                              )
-                            : (id == widget.room.creatorId
-                                  ? const Chip(label: Text('Creador'))
-                                  : null),
+                              ),
+                            if (id == widget.room.creatorId)
+                              const Chip(label: Text('Creador')),
+                            PopupMenuButton<String>(
+                              onSelected: (value) async {
+                                if (value == 'view') {
+                                  _viewUserProfile(id);
+                                } else if (value == 'report') {
+                                  await _reportUser(id);
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(
+                                  value: 'view',
+                                  child: Text('Ver perfil'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'report',
+                                  child: Text('Reportar usuario'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }).toList(),
