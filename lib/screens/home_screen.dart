@@ -25,6 +25,8 @@ class StudyRoom {
   final List<String> members;
   final bool isOnline;
   final String campus;
+  final int? capacity;
+  final String? description;
   final Map<String, dynamic> rawData;
 
   StudyRoom.fromFirestore(DocumentSnapshot doc)
@@ -35,6 +37,19 @@ class StudyRoom {
       members = List<String>.from(doc['members'] ?? []),
       isOnline = doc['type'] == 'Online',
       campus = doc['campus'] ?? 'Online',
+      // parse capacity if present
+      capacity =
+          doc.data() != null &&
+              (doc.data() as Map<String, dynamic>)['capacity'] != null
+          ? int.tryParse(
+              ((doc.data() as Map<String, dynamic>)['capacity']).toString(),
+            )
+          : null,
+      description =
+          doc.data() != null &&
+              (doc.data() as Map<String, dynamic>)['description'] != null
+          ? ((doc.data() as Map<String, dynamic>)['description']).toString()
+          : null,
       rawData = doc.data() as Map<String, dynamic>;
 
   String get name => '$courseCode: $topic';
@@ -61,6 +76,29 @@ Future<void> _performJoin(
       );
     }
     return;
+  }
+  try {
+    // Re-fetch room document to get current members and capacity
+    final roomDoc = await FirebaseFirestore.instance
+        .collection('study_rooms')
+        .doc(roomId)
+        .get();
+    final currentMembers = List<String>.from(roomDoc.data()?['members'] ?? []);
+    final capacity = roomDoc.data()?['capacity'];
+    if (capacity != null &&
+        capacity is int &&
+        currentMembers.length >= capacity) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('La sala está llena. No puedes unirte.'),
+          ),
+        );
+      }
+      return;
+    }
+  } catch (e) {
+    // ignore and continue to attempt join; Firestore rules may block later
   }
   try {
     await FirebaseFirestore.instance
@@ -304,12 +342,17 @@ class _HomeContentState extends State<_HomeContent> {
     Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
 
     // Excluye 'Mostrar Todos' para obtener la lista de ramos reales
-    final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
+    final ramosFiltrados = _userActiveCourses
+        .where((r) => r != 'Mostrar Todos')
+        .toList();
 
     // Si el usuario seleccionó un ramo específico (no 'Mostrar Todos')
     if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
-      roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
-    } 
+      roomsQuery = roomsQuery.where(
+        'courseCode',
+        isEqualTo: _selectedFilterRamo,
+      );
+    }
     // Si seleccionó 'Mostrar Todos' y tiene ramos inscritos, filtra por sus ramos
     else if (ramosFiltrados.isNotEmpty) {
       roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
@@ -355,26 +398,28 @@ class _HomeContentState extends State<_HomeContent> {
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 String mensaje;
-                final ramosFiltrados = _userActiveCourses.where((r) => r != 'Mostrar Todos').toList();
-                
+                final ramosFiltrados = _userActiveCourses
+                    .where((r) => r != 'Mostrar Todos')
+                    .toList();
+
                 if (ramosFiltrados.isEmpty) {
-                  mensaje = 'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas disponibles.';
+                  mensaje =
+                      'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas disponibles.';
                 } else if (_selectedFilterRamo == 'Mostrar Todos') {
-                  mensaje = 'No hay salas disponibles para tus ramos.\n¡Crea una!';
+                  mensaje =
+                      'No hay salas disponibles para tus ramos.\n¡Crea una!';
                 } else {
-                  mensaje = 'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
+                  mensaje =
+                      'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
                 }
-                
+
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Text(
                       mensaje,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: primaryColor,
-                        fontSize: 16,
-                      ),
+                      style: const TextStyle(color: primaryColor, fontSize: 16),
                     ),
                   ),
                 );
@@ -500,21 +545,19 @@ class _StudyRoomCard extends StatelessWidget {
     final roomId = room.id;
 
     await _checkAndJoinRoom(context, roomData, roomId);
-
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId != null && room.members.contains(userId)) {
-      if (context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => ChatRoomScreen(room: room)),
-        );
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     final isMember = room.members.contains(userId);
+
+    final String displaySubtitle =
+        (room.description != null && room.description!.trim().isNotEmpty)
+        ? (room.description!.length > 80
+              ? '${room.description!.substring(0, 80)}...'
+              : room.description!)
+        : room.topic;
 
     final Function()? cardOnTap = () {
       _handleRoomAction(context, isMember);
@@ -538,16 +581,16 @@ class _StudyRoomCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              // Título secundario (Tema)
-              room.topic,
+              // Mostrar descripción corta si existe, si no mostrar el tema
+              displaySubtitle,
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                // Conteo de Miembros (Número e icono)
+                // Conteo de Miembros (Número e icono) con capacidad
                 Text(
-                  '${room.members.length}',
+                  '${room.members.length}${room.capacity != null ? '/${room.capacity}' : ''}',
                   style: const TextStyle(fontSize: 14, color: Colors.white),
                 ),
                 const Icon(Icons.people_alt, color: Colors.white, size: 16),

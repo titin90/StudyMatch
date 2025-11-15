@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../constants/colors.dart';
 import 'home_screen.dart';
+import 'room_participants_screen.dart';
 
 // Modelo de mensaje
 class ChatMessage {
@@ -84,6 +85,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         title: Text(widget.room.name),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.group),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => RoomParticipantsScreen(room: widget.room)),
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: <Widget>[

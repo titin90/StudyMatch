@@ -19,8 +19,10 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   String? _selectedCourseCode;
   String _topic = '';
+  String _description = '';
   String _campus = 'Campus San Joaquín';
   String _type = 'Online';
+  int _capacity = 8;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
@@ -129,8 +131,10 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         'courseCode': _selectedCourseCode,
         'courseName': courseName,
         'topic': _topic,
+        'description': _description,
         'campus': _campus,
         'type': _type,
+        'capacity': _capacity,
         'scheduledTime': Timestamp.fromDate(scheduledDateTime),
         'createdAt': FieldValue.serverTimestamp(),
         'members': [_auth.currentUser!.uid],
@@ -269,6 +273,17 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                 onSave: (val) => _topic = val!,
                 maxLines: 3,
               ),
+              const SizedBox(height: 12),
+              // Descripción breve (opcional)
+              TextFormField(
+                decoration: const InputDecoration(
+                  labelText: 'Descripción breve (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+                onSaved: (val) => _description = val?.trim() ?? '',
+              ),
+              const SizedBox(height: 16),
               const SizedBox(height: 16),
 
               // Campus
@@ -298,6 +313,25 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                 hint: 'Online o Presencial',
               ),
               const SizedBox(height: 24),
+
+              // Capacidad (moved above Fecha y Hora)
+              TextFormField(
+                initialValue: _capacity.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Capacidad máxima',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (val) {
+                  if (val == null || val.isEmpty) return 'Ingrese capacidad';
+                  final n = int.tryParse(val);
+                  if (n == null || n <= 0) return 'Ingrese un número válido';
+                  return null;
+                },
+                onSaved: (val) => _capacity = int.parse(val!),
+              ),
+
+              const SizedBox(height: 12),
 
               // Fecha y hora
               const Text(
