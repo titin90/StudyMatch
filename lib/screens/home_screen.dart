@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/colors.dart';
+import '../ramo_data.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
@@ -289,12 +290,30 @@ class _HomeContentState extends State<_HomeContent> {
 
   List<String> _userActiveCourses = [];
   String? _selectedFilterRamo;
+  String _filterMode = 'my_courses'; // 'my_courses', 'recommended', 'all'
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadActiveCourses();
+  }
+
+  // Obtiene el nombre del ramo desde su código
+  String _getRamoDisplayName(String code) {
+    if (code == 'Mostrar Todos') return code;
+    final ramo = allRamos.firstWhere(
+      (r) => r.code == code,
+      orElse: () => Ramo(
+        code: code,
+        name: code,
+        universityId: '',
+        careerId: '',
+        year: '',
+        semester: '',
+      ),
+    );
+    return '${ramo.code} - ${ramo.name}';
   }
 
   // Carga los ramos activos del usuario para usarlos como filtro
@@ -341,27 +360,27 @@ class _HomeContentState extends State<_HomeContent> {
     // Lógica para construir el Query de Firestore
     Query roomsQuery = FirebaseFirestore.instance.collection('study_rooms');
 
-    // Excluye 'Mostrar Todos' para obtener la lista de ramos reales
-    final ramosFiltrados = _userActiveCourses
-        .where((r) => r != 'Mostrar Todos')
-        .toList();
-
-    // Si el usuario seleccionó un ramo específico (no 'Mostrar Todos')
-    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
-      roomsQuery = roomsQuery.where(
-        'courseCode',
-        isEqualTo: _selectedFilterRamo,
-      );
+    // Filtros según el modo seleccionado
+    if (_filterMode == 'my_courses' && _userActiveCourses.isNotEmpty) {
+      // Mostrar solo salas de mis ramos
+      final ramosFiltrados = _userActiveCourses
+          .where((r) => r != 'Mostrar Todos')
+          .toList();
+      
+      if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
+        roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
+      } else if (ramosFiltrados.isNotEmpty) {
+        roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
+      }
     }
-    // Si seleccionó 'Mostrar Todos' y tiene ramos inscritos, filtra por sus ramos
-    else if (ramosFiltrados.isNotEmpty) {
-      roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
-    }
-    // Si no tiene ramos inscritos, no aplicamos filtro (mostrará todas las salas)
+    // Si el modo es 'all', no aplicamos filtro (muestra todas las salas)
 
     return Column(
       children: [
         _buildHeader(context),
+
+        // Chips de filtro
+        _buildFilterChips(),
 
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -369,7 +388,7 @@ class _HomeContentState extends State<_HomeContent> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Salas disponibles.',
+                'Salas disponibles',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -398,13 +417,12 @@ class _HomeContentState extends State<_HomeContent> {
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 String mensaje;
-                final ramosFiltrados = _userActiveCourses
-                    .where((r) => r != 'Mostrar Todos')
-                    .toList();
-
-                if (ramosFiltrados.isEmpty) {
+                
+                if (_filterMode == 'all') {
+                  mensaje = 'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
+                } else if (_userActiveCourses.isEmpty) {
                   mensaje =
-                      'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas disponibles.';
+                      'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
                 } else if (_selectedFilterRamo == 'Mostrar Todos') {
                   mensaje =
                       'No hay salas disponibles para tus ramos.\n¡Crea una!';
@@ -416,10 +434,24 @@ class _HomeContentState extends State<_HomeContent> {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      mensaje,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: primaryColor, fontSize: 16),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          mensaje,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -440,6 +472,47 @@ class _HomeContentState extends State<_HomeContent> {
           ),
         ),
       ],
+    );
+  }
+
+  // Chips de filtro rápido
+  Widget _buildFilterChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          FilterChip(
+            label: Text(
+              'Mis Ramos${_userActiveCourses.isEmpty ? " (0)" : " (${_userActiveCourses.length})"}',
+            ),
+            selected: _filterMode == 'my_courses',
+            onSelected: _userActiveCourses.isEmpty
+                ? null
+                : (selected) {
+                    setState(() {
+                      _filterMode = 'my_courses';
+                      _selectedFilterRamo = 'Mostrar Todos';
+                    });
+                  },
+            selectedColor: Colors.green[100],
+            checkmarkColor: Colors.green,
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            label: const Text('Todas las Salas'),
+            selected: _filterMode == 'all',
+            onSelected: (selected) {
+              setState(() {
+                _filterMode = 'all';
+                _selectedFilterRamo = null;
+              });
+            },
+            selectedColor: Colors.blue[100],
+            checkmarkColor: Colors.blue,
+          ),
+        ],
+      ),
     );
   }
 
@@ -474,7 +547,7 @@ class _HomeContentState extends State<_HomeContent> {
                     child: Text(
                       value == 'Mostrar Todos'
                           ? 'Mostrar Salas Para Mi'
-                          : value,
+                          : _getRamoDisplayName(value),
                       style: TextStyle(
                         fontWeight: value == 'Mostrar Todos'
                             ? FontWeight.bold
@@ -483,6 +556,7 @@ class _HomeContentState extends State<_HomeContent> {
                             ? primaryColor
                             : textColor,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   );
                 }).toList(),

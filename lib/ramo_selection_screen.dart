@@ -39,9 +39,9 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
     return 'artifacts/$appId/users/$uid/profile_data/data';
   }
 
-  // Filtra los ramos por carrera
+  // Filtra los ramos por carrera usando el helper
   List<Ramo> getFilteredSubjects() {
-    return allRamos.where((ramo) => ramo.careerId == widget.careerId).toList();
+    return getRamosForCareer(widget.careerId);
   }
 
   // Guarda los ramos seleccionados en Firestore
@@ -107,18 +107,23 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
     _updateRamosInFirestore();
   }
 
-  // Agrupa los ramos por año
-  Map<String, List<Ramo>> _groupRamosByYear(List<Ramo> allRamos) {
-    Map<String, List<Ramo>> ramosByYear = {};
+  // Agrupa los ramos por año y luego por semestre
+  Map<String, Map<String, List<Ramo>>> _groupRamosByYearAndSemester(List<Ramo> allRamos) {
+    Map<String, Map<String, List<Ramo>>> ramosByYearAndSemester = {};
+    
     for (var ramo in allRamos) {
-      if (!ramosByYear.containsKey(ramo.year)) {
-        ramosByYear[ramo.year] = [];
+      if (!ramosByYearAndSemester.containsKey(ramo.year)) {
+        ramosByYearAndSemester[ramo.year] = {};
       }
-      ramosByYear[ramo.year]!.add(ramo);
+      if (!ramosByYearAndSemester[ramo.year]!.containsKey(ramo.semester)) {
+        ramosByYearAndSemester[ramo.year]![ramo.semester] = [];
+      }
+      ramosByYearAndSemester[ramo.year]![ramo.semester]!.add(ramo);
     }
 
+    // Ordenar por año
     return Map.fromEntries(
-      ramosByYear.entries.toList()
+      ramosByYearAndSemester.entries.toList()
         ..sort((a, b) => double.parse(a.key).compareTo(double.parse(b.key))),
     );
   }
@@ -126,7 +131,7 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     final allRamos = getFilteredSubjects();
-    final ramosByYear = _groupRamosByYear(allRamos);
+    final ramosByYearAndSemester = _groupRamosByYearAndSemester(allRamos);
 
     return Scaffold(
       appBar: AppBar(
@@ -170,9 +175,13 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
             )
           : ListView(
               padding: const EdgeInsets.all(16.0),
-              children: ramosByYear.entries.map((entry) {
-                final year = entry.key;
-                final ramosInYear = entry.value;
+              children: ramosByYearAndSemester.entries.map((yearEntry) {
+                final year = yearEntry.key;
+                final semesterMap = yearEntry.value;
+                
+                // Contar total de ramos del año
+                final totalRamosInYear = semesterMap.values
+                    .fold<int>(0, (sum, ramos) => sum + ramos.length);
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -193,26 +202,75 @@ class _RamoSelectionScreenState extends State<RamoSelectionScreen> {
                         fontSize: 17,
                       ),
                     ),
-                    subtitle: Text('${ramosInYear.length} ramos disponibles'),
-                    children: ramosInYear.map((ramo) {
-                      final isSelected = _selectedRamos.contains(ramo.code);
+                    subtitle: Text('$totalRamosInYear ramos disponibles'),
+                    children: semesterMap.entries.map((semesterEntry) {
+                      final semester = semesterEntry.key;
+                      final ramosInSemester = semesterEntry.value;
+                      
+                      // Ordenar semestres numéricamente
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                        child: Card(
+                          color: Colors.grey[50],
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          child: ExpansionTile(
+                            initiallyExpanded: semester == '1',
+                            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            leading: Icon(
+                              Icons.book_outlined,
+                              color: secondaryColor,
+                              size: 20,
+                            ),
+                            title: Text(
+                              'Semestre $semester',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${ramosInSemester.length} ramos',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            children: ramosInSemester.map((ramo) {
+                              final isSelected = _selectedRamos.contains(ramo.code);
 
-                      return ListTile(
-                        leading: Icon(Icons.class_, color: primaryColor),
-                        title: Text(
-                          ramo.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                              return ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  Icons.class_,
+                                  color: primaryColor,
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  ramo.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${ramo.code}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                trailing: isSelected
+                                    ? const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green,
+                                        size: 24,
+                                      )
+                                    : null,
+                                onTap: () {
+                                  _toggleRamoSelection(ramo);
+                                },
+                              );
+                            }).toList(),
+                          ),
                         ),
-                        subtitle: Text('${ramo.code} - Año ${ramo.year}'),
-                        trailing: isSelected
-                            ? const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                              )
-                            : null,
-                        onTap: () {
-                          _toggleRamoSelection(ramo);
-                        },
                       );
                     }).toList(),
                   ),

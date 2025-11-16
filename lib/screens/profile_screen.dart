@@ -143,8 +143,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => RamoSelectionScreen(
                           careerId: userProfile.careerId,
@@ -153,6 +153,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     );
+                    // Refrescar el perfil al volver
+                    setState(() {});
                   },
                   icon: const Icon(Icons.edit, size: 20),
                   label: const Text(

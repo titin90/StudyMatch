@@ -16,6 +16,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final _customCourseCodeController = TextEditingController();
+  final _customCourseNameController = TextEditingController();
 
   String? _selectedCourseCode;
   String _topic = '';
@@ -26,7 +28,9 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
+  bool _isCustomCourse = false;
   List<String> _userActiveCourses = [];
+  String? _userCareerId;
 
   // Genera la ruta para Ramos
   String _getRamosDocPath(String uid) {
@@ -69,6 +73,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
       if (mounted) {
         setState(() {
           _campus = rootData?['campus'] ?? 'Campus San Joaquín';
+          _userCareerId = rootData?['career_id'] as String?;
           _userActiveCourses =
               (ramosData?['current_ramos'] as List<dynamic>?)
                   ?.cast<String>()
@@ -91,13 +96,27 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   // Guardar la sala en Firestore
   Future<void> _createStudyRoom() async {
-    if (_selectedCourseCode == null) {
+    if (!_isCustomCourse && _selectedCourseCode == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Por favor, selecciona un ramo.')),
         );
       }
       return;
+    }
+
+    if (_isCustomCourse) {
+      if (_customCourseCodeController.text.trim().isEmpty ||
+          _customCourseNameController.text.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Por favor, completa el código y nombre del ramo personalizado.'),
+            ),
+          );
+        }
+        return;
+      }
     }
 
     if (!_formKey.currentState!.validate()) {
@@ -119,17 +138,27 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
       _selectedTime.minute,
     );
 
-    final Ramo? fullRamo = allRamos.firstWhereOrNull(
-      (r) => r.code == _selectedCourseCode,
-    );
-    final courseName = fullRamo?.name ?? 'Estudio General';
+    String courseCode;
+    String courseName;
+
+    if (_isCustomCourse) {
+      courseCode = _customCourseCodeController.text.trim();
+      courseName = _customCourseNameController.text.trim();
+    } else {
+      courseCode = _selectedCourseCode!;
+      final Ramo? fullRamo = allRamos.firstWhereOrNull(
+        (r) => r.code == courseCode,
+      );
+      courseName = fullRamo?.name ?? 'Estudio General';
+    }
 
     try {
       await _firestore.collection('study_rooms').add({
         'creatorId': _auth.currentUser!.uid,
         'creatorEmail': _auth.currentUser!.email,
-        'courseCode': _selectedCourseCode,
+        'courseCode': courseCode,
         'courseName': courseName,
+        'isCustomCourse': _isCustomCourse,
         'topic': _topic,
         'description': _description,
         'campus': _campus,
@@ -192,53 +221,18 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> availableCourses = _userActiveCourses;
-
-    if (_userActiveCourses.isEmpty && !_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Crear Nueva Sala de Estudio'),
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.warning, size: 50, color: secondaryColor),
-                const SizedBox(height: 16),
-                const Text(
-                  'Aún no tienes ramos activos.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: secondaryColor,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Ve a tu Perfil para seleccionar los ramos que estás cursando antes de crear una sala.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: textColor),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Volver al Inicio'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+    // Obtener ramos recomendados basados en la carrera del usuario
+    List<String> recommendedCourses = [];
+    List<String> allAvailableCourses = [];
+    
+    if (_userCareerId != null) {
+      recommendedCourses = getRamosForCareer(_userCareerId!)
+          .map((ramo) => ramo.code)
+          .toList();
     }
+    
+    // Todos los ramos disponibles en el sistema
+    allAvailableCourses = allRamos.map((ramo) => ramo.code).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -246,29 +240,117 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              // Dropdown para seleccionar el Ramo
-              _buildDropdownField(
-                label: 'Ramo a Estudiar',
-                value: _selectedCourseCode,
-                items: availableCourses,
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedCourseCode = newValue;
-                  });
-                },
-                hint: 'Selecciona el código del ramo',
-              ),
-              const SizedBox(height: 16),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: primaryColor))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    // Selector de tipo de ramo
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: primaryColor.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Selecciona el tipo de sala:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Ramos que estás cursando
+                          RadioListTile<String>(
+                            title: const Text('Mis Ramos Actuales'),
+                            subtitle: Text(
+                              _userActiveCourses.isEmpty
+                                  ? 'No tienes ramos registrados'
+                                  : '${_userActiveCourses.length} ramo(s) disponible(s)',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            value: 'my_courses',
+                            groupValue: _isCustomCourse
+                                ? 'custom'
+                                : (_selectedCourseCode != null &&
+                                        !_userActiveCourses.contains(_selectedCourseCode))
+                                    ? 'all_courses'
+                                    : 'my_courses',
+                            onChanged: _userActiveCourses.isEmpty
+                                ? null
+                                : (value) {
+                                    setState(() {
+                                      _isCustomCourse = false;
+                                      _selectedCourseCode = null;
+                                    });
+                                  },
+                          ),
+                          
+                          // Todos los ramos del sistema
+                          RadioListTile<String>(
+                            title: const Text('Buscar Otros Ramos'),
+                            subtitle: const Text(
+                              'Explorar ramos de cualquier carrera',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: 'all_courses',
+                            groupValue: _isCustomCourse
+                                ? 'custom'
+                                : (_selectedCourseCode != null &&
+                                        !_userActiveCourses.contains(_selectedCourseCode))
+                                    ? 'all_courses'
+                                    : 'my_courses',
+                            onChanged: (value) {
+                              setState(() {
+                                _isCustomCourse = false;
+                                _selectedCourseCode = null;
+                              });
+                            },
+                          ),
+                          
+                          // Ramo personalizado
+                          RadioListTile<String>(
+                            title: const Text('Crear Ramo Personalizado'),
+                            subtitle: const Text(
+                              'Para ramos que no están en el sistema',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: 'custom',
+                            groupValue: _isCustomCourse ? 'custom' : 'my_courses',
+                            onChanged: (value) {
+                              setState(() {
+                                _isCustomCourse = true;
+                                _selectedCourseCode = null;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
-              // Tema
-              _buildTextFormField(
+                    // UI condicional según el tipo seleccionado
+                    if (!_isCustomCourse) ...[
+                      // Dropdown para ramos
+                      _buildRamoDropdown(),
+                    ] else ...[
+                      // Campos para ramo personalizado
+                      _buildCustomCourseFields(),
+                    ],
+                    
+                    const SizedBox(height: 16),
+
+                    // Tema
+                    _buildTextFormField(
                 label: 'Tema Específico (Ej: Árboles Binarios, Certamen 1)',
                 onSave: (val) => _topic = val!,
                 maxLines: 3,
@@ -417,6 +499,185 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     );
   }
 
+  // Widget para seleccionar ramo del dropdown
+  Widget _buildRamoDropdown() {
+    List<String> availableCourses;
+    String hint;
+    
+    // Determinar qué lista mostrar
+    if (_selectedCourseCode != null && !_userActiveCourses.contains(_selectedCourseCode)) {
+      // Modo "todos los ramos"
+      availableCourses = allRamos.map((r) => r.code).toList();
+      hint = 'Buscar cualquier ramo...';
+    } else {
+      // Modo "mis ramos"
+      availableCourses = _userActiveCourses.isNotEmpty 
+          ? _userActiveCourses 
+          : allRamos.map((r) => r.code).toList(); // Si no tiene ramos, mostrar todos
+      hint = _userActiveCourses.isEmpty
+          ? 'Selecciona un ramo del sistema'
+          : 'Selecciona uno de tus ramos';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          decoration: InputDecoration(
+            labelText: 'Ramo',
+            hintText: hint,
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.book),
+          ),
+          value: availableCourses.contains(_selectedCourseCode)
+              ? _selectedCourseCode
+              : null,
+          isExpanded: true,
+          items: availableCourses.isEmpty 
+              ? []
+              : availableCourses.map((code) {
+                  final ramo = allRamos.firstWhereOrNull((r) => r.code == code);
+                  final displayName = ramo != null
+                      ? '${ramo.code} - ${ramo.name}'
+                      : code;
+                  return DropdownMenuItem<String>(
+                    value: code,
+                    child: Text(
+                      displayName,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  );
+                }).toList(),
+          onChanged: availableCourses.isEmpty 
+              ? null 
+              : (value) {
+                  setState(() {
+                    _selectedCourseCode = value;
+                  });
+                },
+          validator: (value) => value == null ? 'Selecciona un ramo' : null,
+        ),
+        if (_selectedCourseCode != null) ...[
+          const SizedBox(height: 8),
+          _buildRamoInfo(_selectedCourseCode!),
+        ],
+      ],
+    );
+  }
+
+  // Widget para mostrar información del ramo seleccionado
+  Widget _buildRamoInfo(String code) {
+    final ramo = allRamos.firstWhereOrNull((r) => r.code == code);
+    if (ramo == null) return const SizedBox.shrink();
+
+    final isMyRamo = _userActiveCourses.contains(code);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isMyRamo ? Colors.green[50] : Colors.orange[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isMyRamo ? Colors.green : Colors.orange,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isMyRamo ? Icons.check_circle : Icons.info,
+            color: isMyRamo ? Colors.green : Colors.orange,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isMyRamo
+                  ? 'Este es uno de tus ramos actuales'
+                  : 'Ramo de ${ramo.universityId}',
+              style: TextStyle(
+                fontSize: 13,
+                color: isMyRamo ? Colors.green[900] : Colors.orange[900],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Campos para crear ramo personalizado
+  Widget _buildCustomCourseFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          ' Ingresa los datos del ramo',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _customCourseCodeController,
+          decoration: const InputDecoration(
+            labelText: 'Código del Ramo',
+            hintText: 'Ej: MAT-101, FIS-200',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.tag),
+          ),
+          textCapitalization: TextCapitalization.characters,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Ingresa el código del ramo';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _customCourseNameController,
+          decoration: const InputDecoration(
+            labelText: 'Nombre del Ramo',
+            hintText: 'Ej: Matemáticas I, Física General',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.book),
+          ),
+          textCapitalization: TextCapitalization.words,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Ingresa el nombre del ramo';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline, color: primaryColor, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Esta sala estará disponible para todos los usuarios',
+                  style: TextStyle(fontSize: 12, color: primaryColor),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // 💡 HELPER MODIFICADO: DropdownButtonFormField simple y robusto
   Widget _buildDropdownField({
     required String label,
@@ -425,8 +686,11 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     required void Function(String?) onChanged,
     required String hint,
   }) {
+    // Validar que el value esté en la lista, si no, usar null
+    final validValue = (value != null && items.contains(value)) ? value : null;
+    
     return DropdownButtonFormField<String>(
-      value: value,
+      value: validValue,
       decoration: InputDecoration(
         // Configuración de estilo directa
         labelText: label,
