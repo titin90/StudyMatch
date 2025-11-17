@@ -241,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (_selectedIndex == 1) {
       title = 'Notificaciones';
     } else if (_selectedIndex == 0) {
-      title = 'Inicio';
+      title = 'StudyMatch';
     }
 
     return Scaffold(
@@ -252,11 +252,25 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         actions: [if (_selectedIndex == 2) _buildLogoutAction(context)],
       ),
-
       body: _widgetOptions.elementAt(_selectedIndex),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _selectedIndex == 0
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const CreateRoomScreen(),
+                  ),
+                );
+              },
+              backgroundColor: secondaryColor,
+              child: const Icon(Icons.add),
+              tooltip: 'Crear sala',
+            )
+          : null,
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'StudyMatch'),
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications),
             label: 'Notificaciones',
@@ -366,9 +380,13 @@ class _HomeContentState extends State<_HomeContent> {
       final ramosFiltrados = _userActiveCourses
           .where((r) => r != 'Mostrar Todos')
           .toList();
-      
-      if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') {
-        roomsQuery = roomsQuery.where('courseCode', isEqualTo: _selectedFilterRamo);
+
+      if (_selectedFilterRamo != null &&
+          _selectedFilterRamo != 'Mostrar Todos') {
+        roomsQuery = roomsQuery.where(
+          'courseCode',
+          isEqualTo: _selectedFilterRamo,
+        );
       } else if (ramosFiltrados.isNotEmpty) {
         roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
       }
@@ -417,9 +435,10 @@ class _HomeContentState extends State<_HomeContent> {
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 String mensaje;
-                
+
                 if (_filterMode == 'all') {
-                  mensaje = 'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
+                  mensaje =
+                      'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
                 } else if (_userActiveCourses.isEmpty) {
                   mensaje =
                       'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
@@ -563,44 +582,7 @@ class _HomeContentState extends State<_HomeContent> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-
-          InkWell(
-            onTap: widget.onCreateRoomTapped,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: secondaryColor,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Crear sala',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Busca gente para estudiar o compartir material!',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.add_circle, color: Colors.white, size: 30),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 0),
         ],
       ),
     );
