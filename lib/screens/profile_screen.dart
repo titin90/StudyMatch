@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants/colors.dart';
 import '../ramo_selection_screen.dart';
 import '../ramo_data.dart';
+import '../services/image_service.dart';
+import '../widgets/local_or_network_image.dart';
 
 // Modelo de datos para el perfil del usuario
 class UserProfile {
@@ -50,6 +52,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final _imageService = ImageService();
 
   String _getRamosDocPath(String uid) {
     const appId = String.fromEnvironment(
@@ -123,6 +126,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildProfileImageSection(userProfile.uid),
+              const SizedBox(height: 20),
               _buildHeader(userProfile.email),
               const SizedBox(height: 25),
 
@@ -230,37 +235,231 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // Sección de foto de perfil con opción de cambiar
+  Widget _buildProfileImageSection(String userId) {
+    return FutureBuilder<String?>(
+      future: _imageService.getProfileImageUrl(userId),
+      builder: (context, snapshot) {
+        final String? imagePath = snapshot.data;
+        
+        return Center(
+          child: Column(
+            children: [
+              Stack(
+                children: [
+                  LocalOrNetworkImage(
+                    imagePath: imagePath,
+                    radius: 60,
+                    backgroundColor: primaryColor,
+                    placeholder: const Icon(Icons.person, size: 60, color: Colors.white),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: () => _showProfileImageOptions(userId, imagePath),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: secondaryColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Mostrar opciones para la foto de perfil
+  void _showProfileImageOptions(String userId, String? currentImageUrl) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: primaryColor),
+                title: const Text('Elegir de galería'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _uploadNewProfileImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: primaryColor),
+                title: const Text('Tomar foto'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _uploadNewProfileImage(useCamera: true);
+                },
+              ),
+              if (currentImageUrl != null)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Eliminar foto'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _deleteProfileImage(userId);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.cancel),
+                title: const Text('Cancelar'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Subir nueva foto de perfil
+  Future<void> _uploadNewProfileImage({bool useCamera = false}) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      // Seleccionar imagen
+      final imageFile = useCamera
+          ? await _imageService.takePhoto()
+          : await _imageService.pickImageFromGallery();
+
+      if (imageFile == null) return;
+
+      // Mostrar indicador de carga
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: primaryColor),
+        ),
+      );
+
+      // Subir imagen
+      final downloadUrl = await _imageService.uploadProfileImage(imageFile, userId);
+
+      // Cerrar indicador de carga
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      if (downloadUrl != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto de perfil actualizada'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {}); // Refrescar la UI
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error al subir la imagen'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Cerrar loading si está abierto
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Eliminar foto de perfil
+  Future<void> _deleteProfileImage(String userId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar foto de perfil'),
+        content: const Text('¿Estás seguro de que deseas eliminar tu foto de perfil?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Mostrar indicador de carga
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(color: primaryColor),
+      ),
+    );
+
+    final success = await _imageService.deleteProfileImage(userId);
+
+    // Cerrar indicador de carga
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto de perfil eliminada'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() {}); // Refrescar la UI
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error al eliminar la foto'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   // Encabezado del perfil
   Widget _buildHeader(String email) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
-            radius: 35, // Tamaño más pequeño
-            backgroundColor: primaryColor,
-            child: Icon(Icons.person, size: 40, color: Colors.white),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Mi Perfil Académico',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                Text(
-                  'Bienvenido, ${email}',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+          const Text(
+            'Mi Perfil Académico',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: textColor,
             ),
+          ),
+          Text(
+            'Bienvenido, $email',
+            style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

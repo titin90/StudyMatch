@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../constants/colors.dart';
 import 'home_screen.dart';
 import 'user_profile.dart';
+import '../widgets/local_or_network_image.dart';
 
 class RoomParticipantsScreen extends StatefulWidget {
   final StudyRoom room;
@@ -674,10 +675,17 @@ class _RoomParticipantsScreenState extends State<RoomParticipantsScreen> {
                     final user = _usersData[id];
                     final displayName = _getDisplayName(user, id);
                     final email = user?['email'] as String? ?? '';
+                    final profileImageUrl = user?['profileImageUrl'] as String?;
                     return Card(
                       child: ListTile(
-                        leading: CircleAvatar(
-                          child: Text(_getInitials(displayName)),
+                        leading: LocalOrNetworkImage(
+                          imagePath: profileImageUrl,
+                          radius: 20,
+                          backgroundColor: primaryColor,
+                          placeholder: Text(
+                            _getInitials(displayName),
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ),
                         title: Text(displayName),
                         subtitle: email.isNotEmpty ? Text(email) : null,
