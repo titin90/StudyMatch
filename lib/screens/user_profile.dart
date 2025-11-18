@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../widgets/local_or_network_image.dart';
 
 class UserProfile {
   // Asegúrate de incluir todos los campos que guardas en Firestore
@@ -122,9 +123,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       children: [
                         Row(
                           children: [
-                            CircleAvatar(
+                            LocalOrNetworkImage(
+                              imagePath: _data?['profileImageUrl'] as String?,
                               radius: 30,
-                              child: Text(_getInitials(_getName())),
+                              backgroundColor: primaryColor,
+                              placeholder: Text(_getInitials(_getName())),
                             ),
                             const SizedBox(width: 12),
                             Column(
