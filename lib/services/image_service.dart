@@ -1,36 +1,22 @@
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Servicio para gestionar la subida, compresión y eliminación de imágenes de perfil
-/// VERSIÓN LOCAL: Las imágenes se guardan en el almacenamiento local del dispositivo
-/// hasta que Firebase Storage esté disponible
+/// usando Firebase Storage
 class ImageService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final ImagePicker _picker = ImagePicker();
 
-  /// Obtiene el directorio donde se guardarán las fotos de perfil
-  Future<Directory> _getProfileImagesDirectory() async {
-    final Directory appDocDir = await getApplicationDocumentsDirectory();
-    final Directory profileImagesDir = Directory('${appDocDir.path}/profile_images');
-    
-    // Crear directorio si no existe
-    if (!await profileImagesDir.exists()) {
-      await profileImagesDir.create(recursive: true);
-    }
-    
-    return profileImagesDir;
-  }
-
-  /// Obtiene la ruta local de la imagen de perfil de un usuario
-  Future<String> _getLocalImagePath(String userId) async {
-    final Directory dir = await _getProfileImagesDirectory();
-    return '${dir.path}/$userId.jpg';
+  /// Obtiene la referencia de Firebase Storage para la imagen de perfil
+  Reference _getProfileImageRef(String userId) {
+    return _storage.ref().child('profile_images/$userId.jpg');
   }
 
   /// Selecciona una imagen de la galería
@@ -73,65 +59,70 @@ class ImageService {
     }
   }
 
-  /// Sube la imagen de perfil al almacenamiento LOCAL y actualiza Firestore
-  /// Retorna la ruta local de la imagen o null si hay error
+  /// Sube la imagen de perfil a Firebase Storage y actualiza Firestore
+  /// Retorna la URL de descarga o null si hay error
   Future<String?> uploadProfileImage(File imageFile, String userId) async {
     try {
-      // Obtener la ruta local donde guardar la imagen
-      final String localPath = await _getLocalImagePath(userId);
+      // Obtener la referencia de Storage
+      final Reference storageRef = _getProfileImageRef(userId);
       
-      // Copiar el archivo a la ubicación local
-      await imageFile.copy(localPath);
+      // Subir el archivo a Firebase Storage
+      final UploadTask uploadTask = storageRef.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'userId': userId,
+            'uploadedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+
+      // Esperar a que se complete la subida
+      final TaskSnapshot snapshot = await uploadTask;
       
-      // Guardar la ruta local en Firestore
+      // Obtener la URL de descarga
+      final String downloadUrl = await snapshot.ref.getDownloadURL();
+      
+      // Guardar la URL en Firestore
       await _firestore.collection('users').doc(userId).update({
-        'profileImageUrl': localPath, // Guardamos la ruta local
+        'profileImageUrl': downloadUrl,
         'profileImageUpdatedAt': FieldValue.serverTimestamp(),
-        'isLocalImage': true, // Flag para saber que es local
       });
 
-      debugPrint('✅ Imagen guardada localmente en: $localPath');
-      return localPath;
+      debugPrint('✅ Imagen subida a Firebase Storage: $downloadUrl');
+      return downloadUrl;
     } catch (e) {
-      debugPrint('❌ Error al guardar imagen localmente: $e');
+      debugPrint('❌ Error al subir imagen a Firebase Storage: $e');
       return null;
     }
   }
 
-  /// Elimina la imagen de perfil LOCAL del usuario
+  /// Elimina la imagen de perfil de Firebase Storage y Firestore
   Future<bool> deleteProfileImage(String userId) async {
     try {
-      // Eliminar archivo local
-      final String localPath = await _getLocalImagePath(userId);
-      final File imageFile = File(localPath);
+      // Eliminar archivo de Firebase Storage
+      final Reference storageRef = _getProfileImageRef(userId);
       
-      if (await imageFile.exists()) {
-        await imageFile.delete();
-        debugPrint('✅ Imagen local eliminada: $localPath');
+      try {
+        await storageRef.delete();
+        debugPrint('✅ Imagen eliminada de Firebase Storage');
+      } catch (storageError) {
+        // Si el archivo no existe en Storage, continuar de todas formas
+        debugPrint('⚠️ Error al eliminar de Storage (puede que no exista): $storageError');
       }
 
       // Actualizar Firestore
       await _firestore.collection('users').doc(userId).update({
         'profileImageUrl': null,
         'profileImageUpdatedAt': FieldValue.serverTimestamp(),
-        'isLocalImage': null,
       });
 
+      debugPrint('✅ Referencia eliminada de Firestore');
       return true;
     } catch (e) {
       debugPrint('❌ Error al eliminar imagen: $e');
-      // Intentar actualizar Firestore aunque falle la eliminación local
-      try {
-        await _firestore.collection('users').doc(userId).update({
-          'profileImageUrl': null,
-          'profileImageUpdatedAt': FieldValue.serverTimestamp(),
-          'isLocalImage': null,
-        });
-        return true;
-      } catch (firestoreError) {
-        debugPrint('❌ Error al actualizar Firestore: $firestoreError');
-        return false;
-      }
+      return false;
     }
   }
 
