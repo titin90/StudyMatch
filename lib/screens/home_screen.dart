@@ -209,7 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     ),
-    const Center(child: Text('Pantalla de Notificaciones (Próximamente)')),
     const ProfileScreen(),
   ];
 
@@ -236,10 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     String title = 'StudyMatch';
-    if (_selectedIndex == 2) {
+    if (_selectedIndex == 1) {
       title = 'Mi Perfil';
-    } else if (_selectedIndex == 1) {
-      title = 'Notificaciones';
     } else if (_selectedIndex == 0) {
       title = 'StudyMatch';
     }
@@ -250,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [if (_selectedIndex == 2) _buildLogoutAction(context)],
+        actions: [if (_selectedIndex == 1) _buildLogoutAction(context)],
       ),
       body: _widgetOptions.elementAt(_selectedIndex),
       floatingActionButton: _selectedIndex == 0
@@ -270,10 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'StudyMatch'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notificaciones',
-          ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
         ],
         currentIndex: _selectedIndex,
@@ -484,10 +477,7 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Aplicar filtro de modalidad
     if (_selectedModalidad != null) {
-      roomsQuery = roomsQuery.where(
-        'type',
-        isEqualTo: _selectedModalidad,
-      );
+      roomsQuery = roomsQuery.where('type', isEqualTo: _selectedModalidad);
     }
 
     return Scaffold(
@@ -512,7 +502,11 @@ class _HomeContentState extends State<_HomeContent> {
                 IconButton(
                   icon: Stack(
                     children: [
-                      const Icon(Icons.filter_list, color: primaryColor, size: 28),
+                      const Icon(
+                        Icons.filter_list,
+                        color: primaryColor,
+                        size: 28,
+                      ),
                       if (_hasActiveFilters())
                         Positioned(
                           right: 0,
@@ -546,7 +540,10 @@ class _HomeContentState extends State<_HomeContent> {
 
           // Buscador de texto
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -603,29 +600,29 @@ class _HomeContentState extends State<_HomeContent> {
                 // Obtener todas las salas
                 var rooms = snapshot.hasData
                     ? snapshot.data!.docs
-                        .map((doc) => StudyRoom.fromFirestore(doc))
-                        .toList()
+                          .map((doc) => StudyRoom.fromFirestore(doc))
+                          .toList()
                     : <StudyRoom>[];
 
                 // Aplicar filtros del lado del cliente
                 rooms = _applyClientSideFilters(rooms);
 
                 if (rooms.isEmpty) {
-                String mensaje;
+                  String mensaje;
 
-                if (_filterMode == 'all') {
-                  mensaje =
-                      'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
-                } else if (_userActiveCourses.isEmpty) {
-                  mensaje =
-                      'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
-                } else if (_selectedFilterRamo == 'Mostrar Todos') {
-                  mensaje =
-                      'No hay salas disponibles para tus ramos.\n¡Crea una!';
-                } else {
-                  mensaje =
-                      'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
-                }
+                  if (_filterMode == 'all') {
+                    mensaje =
+                        'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
+                  } else if (_userActiveCourses.isEmpty) {
+                    mensaje =
+                        'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
+                  } else if (_selectedFilterRamo == 'Mostrar Todos') {
+                    mensaje =
+                        'No hay salas disponibles para tus ramos.\n¡Crea una!';
+                  } else {
+                    mensaje =
+                        'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
+                  }
 
                   return Center(
                     child: Padding(
@@ -701,7 +698,8 @@ class _HomeContentState extends State<_HomeContent> {
       filteredRooms = filteredRooms.where((room) {
         final titleMatch = room.name.toLowerCase().contains(_searchText);
         final topicMatch = room.topic.toLowerCase().contains(_searchText);
-        final descriptionMatch = room.description != null &&
+        final descriptionMatch =
+            room.description != null &&
             room.description!.toLowerCase().contains(_searchText);
         return titleMatch || topicMatch || descriptionMatch;
       }).toList();
@@ -726,7 +724,8 @@ class _HomeContentState extends State<_HomeContent> {
   int _getActiveFiltersCount() {
     int count = 0;
     if (_filterMode == 'my_courses') count++;
-    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') count++;
+    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos')
+      count++;
     if (_selectedUniversity != null) count++;
     if (_selectedCampus != null) count++;
     if (_selectedModalidad != null) count++;
@@ -735,8 +734,6 @@ class _HomeContentState extends State<_HomeContent> {
     if (_searchText.isNotEmpty) count++;
     return count;
   }
-
-
 
   // Drawer de filtros
   Widget _buildFilterDrawer() {
@@ -748,9 +745,7 @@ class _HomeContentState extends State<_HomeContent> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: primaryColor,
-              ),
+              decoration: const BoxDecoration(color: primaryColor),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -766,10 +761,7 @@ class _HomeContentState extends State<_HomeContent> {
                   ),
                   Text(
                     'Personaliza tu búsqueda',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ],
               ),
@@ -821,7 +813,8 @@ class _HomeContentState extends State<_HomeContent> {
                   const Divider(height: 32),
 
                   // Filtro por ramo específico (solo si está en modo mis ramos)
-                  if (_filterMode == 'my_courses' && _userActiveCourses.isNotEmpty) ...[
+                  if (_filterMode == 'my_courses' &&
+                      _userActiveCourses.isNotEmpty) ...[
                     const Text(
                       'Ramo específico',
                       style: TextStyle(
@@ -841,30 +834,33 @@ class _HomeContentState extends State<_HomeContent> {
                         child: DropdownButton<String>(
                           value: _selectedFilterRamo,
                           isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                          icon: const Icon(
+                            Icons.arrow_drop_down,
+                            color: primaryColor,
+                          ),
                           onChanged: (String? newValue) {
                             setState(() {
                               _selectedFilterRamo = newValue;
                             });
                           },
-                          items: _userActiveCourses.map<DropdownMenuItem<String>>((
-                            String value,
-                          ) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(
-                                value == 'Mostrar Todos'
-                                    ? 'Todos mis ramos'
-                                    : _getRamoDisplayName(value),
-                                style: TextStyle(
-                                  fontWeight: value == 'Mostrar Todos'
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
+                          items: _userActiveCourses
+                              .map<DropdownMenuItem<String>>((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(
+                                    value == 'Mostrar Todos'
+                                        ? 'Todos mis ramos'
+                                        : _getRamoDisplayName(value),
+                                    style: TextStyle(
+                                      fontWeight: value == 'Mostrar Todos'
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              })
+                              .toList(),
                         ),
                       ),
                     ),
@@ -892,7 +888,10 @@ class _HomeContentState extends State<_HomeContent> {
                         value: _selectedUniversity,
                         hint: const Text('Todas las universidades'),
                         isExpanded: true,
-                        icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                        icon: const Icon(
+                          Icons.arrow_drop_down,
+                          color: primaryColor,
+                        ),
                         onChanged: (String? newValue) {
                           setState(() {
                             _selectedUniversity = newValue;
@@ -977,7 +976,9 @@ class _HomeContentState extends State<_HomeContent> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _selectedUniversity != null ? primaryColor : Colors.grey,
+                      color: _selectedUniversity != null
+                          ? primaryColor
+                          : Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1048,7 +1049,9 @@ class _HomeContentState extends State<_HomeContent> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _selectedUniversity != null ? primaryColor : Colors.grey,
+                      color: _selectedUniversity != null
+                          ? primaryColor
+                          : Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 8),
