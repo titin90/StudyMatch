@@ -256,14 +256,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             ),
                             child: const Text('Quitar reporte'),
                           )
-                        else
-                          ElevatedButton(
-                            onPressed: _loadProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                            ),
-                            child: const Text('Refrescar'),
-                          ),
                       ],
                     ),
             ),

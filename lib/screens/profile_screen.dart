@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants/colors.dart';
-import '../ramo_selection_screen.dart';
 import '../ramo_data.dart';
+import 'explore_ramos_screen.dart';
 import '../services/image_service.dart';
 import '../widgets/local_or_network_image.dart';
 
@@ -145,25 +145,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
 
+              // Único botón para explorar ramos (incluye mi carrera)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (context) => RamoSelectionScreen(
-                          careerId: userProfile.careerId,
-                          careerName: userProfile.careerName,
-                          initialRamos: userProfile.currentRamos,
+                        builder: (context) => ExploreRamosScreen(
+                          userCareerId: userProfile.careerId,
+                          userCareerName: userProfile.careerName,
                         ),
                       ),
                     );
-                    // Refrescar el perfil al volver
                     setState(() {});
                   },
-                  icon: const Icon(Icons.edit, size: 20),
+                  icon: const Icon(Icons.school, size: 20),
                   label: const Text(
-                    'Editar Ramos Actuales',
+                    'Explorar Ramos',
                     style: TextStyle(fontSize: 16),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -179,13 +178,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              Text(
-                'Ramos Cursando (${userProfile.currentRamos.length})',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: primaryColor,
-                ),
+              // Encabezado de ramos con botón de editar
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Ramos Inscritos (${userProfile.currentRamos.length})',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                    ),
+                  ),
+                  if (userProfile.currentRamos.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () {
+                        _showEditRamosDialog(context, selectedRamoDetails, userProfile.uid);
+                      },
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('Editar'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: primaryColor,
+                      ),
+                    ),
+                ],
               ),
               const Divider(color: grayColor, height: 15),
 
@@ -202,6 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
 
               ...selectedRamoDetails
+                  .take(5) // Mostrar solo los primeros 5
                   .map(
                     (ramo) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -214,13 +231,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                              '${ramo.code} - ${ramo.name}',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: textColor,
-                                fontWeight: FontWeight.w500,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ramo.name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    color: textColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  '${ramo.code} • ${ramo.universityId}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -233,6 +262,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  // Diálogo para editar y eliminar ramos inscritos
+  void _showEditRamosDialog(BuildContext context, List<Ramo> ramos, String userId) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.edit, color: primaryColor),
+                  const SizedBox(width: 8),
+                  const Text('Editar ramos inscritos'),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ramos.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: Text('No tienes ramos inscritos'),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: ramos.length,
+                        itemBuilder: (context, index) {
+                          final ramo = ramos[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: primaryColor,
+                                child: Text(
+                                  ramo.universityId,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                ramo.name,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${ramo.code} • ${ramo.universityId} • ${ramo.credits} créditos',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () async {
+                                  // Confirmar eliminación
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Confirmar'),
+                                      content: Text('¿Eliminar "${ramo.name}"?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: const Text('Cancelar'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: const Text(
+                                            'Eliminar',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirm == true) {
+                                    // Eliminar ramo
+                                    await _deleteRamo(userId, ramo.code);
+                                    // Actualizar lista
+                                    ramos.removeAt(index);
+                                    setDialogState(() {});
+                                    // Refrescar vista principal
+                                    if (mounted) setState(() {});
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteRamo(String userId, String ramoCode) async {
+    try {
+      final ramosDocPath = _getRamosDocPath(userId);
+      final ramosDoc = await _firestore.doc(ramosDocPath).get();
+      final ramosData = ramosDoc.data();
+      
+      final currentRamos = (ramosData?['current_ramos'] as List<dynamic>?)
+              ?.cast<String>()
+              .toList() ??
+          [];
+      
+      currentRamos.remove(ramoCode);
+      
+      await _firestore.doc(ramosDocPath).set({
+        'current_ramos': currentRamos,
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ramo eliminado'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Sección de foto de perfil con opción de cambiar
