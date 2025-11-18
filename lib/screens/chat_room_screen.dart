@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:studyapp/services/file_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../constants/colors.dart';
 import 'home_screen.dart';
 import 'room_participants_screen.dart';
@@ -12,12 +15,16 @@ class ChatMessage {
   final String senderName;
   final String text;
   final Timestamp timestamp;
+  final String type;
+  final String? fileUrl;
 
   ChatMessage.fromFirestore(DocumentSnapshot doc)
-    : senderId = doc['senderId'] ?? '',
-      senderName = doc['senderName'] ?? 'Anónimo',
-      text = doc['text'] ?? '',
-      timestamp = doc['timestamp'] ?? Timestamp.now();
+      : senderId = (doc.data() as Map<String, dynamic>)['senderId'] ?? '',
+        senderName = (doc.data() as Map<String, dynamic>)['senderName'] ?? 'Anónimo',
+        text = (doc.data() as Map<String, dynamic>)['text'] ?? '',
+        timestamp = (doc.data() as Map<String, dynamic>)['timestamp'] ?? Timestamp.now(),
+        type = (doc.data() as Map<String, dynamic>)['type'] ?? 'text',
+        fileUrl = (doc.data() as Map<String, dynamic>)['fileUrl'];
 }
 
 // Pantalla de chat
@@ -34,7 +41,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FileService _fileService = FileService();
   String _currentUserName = 'Usuario';
+  File? _selectedFile;
 
   @override
   void initState() {
@@ -57,11 +66,40 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   // Envía un mensaje
   void _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
+
+    // Si hay un archivo seleccionado, súbelo y envía el mensaje de archivo
+    if (_selectedFile != null) {
+      final String? downloadUrl =
+          await _fileService.uploadFile(_selectedFile!, widget.room.id);
+
+      if (downloadUrl != null) {
+        final roomMessagesRef = _firestore
+            .collection('study_rooms')
+            .doc(widget.room.id)
+            .collection('messages');
+
+        await roomMessagesRef.add({
+          'text': _messageController.text.trim(),
+          'senderId': userId,
+          'senderName': _currentUserName,
+          'timestamp': FieldValue.serverTimestamp(),
+          'type': 'file',
+          'fileUrl': downloadUrl,
+        });
+
+        setState(() {
+          _selectedFile = null;
+        });
+        _messageController.clear();
+      }
+      return;
+    }
+
+    // Si no hay archivo, envía un mensaje de texto normal
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
 
     final roomMessagesRef = _firestore
         .collection('study_rooms')
@@ -73,9 +111,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       'senderId': userId,
       'senderName': _currentUserName,
       'timestamp': FieldValue.serverTimestamp(),
+      'type': 'text',
     });
 
     _messageController.clear();
+  }
+
+  void _pickFile() async {
+    final file = await _fileService.pickFile();
+    if (file != null) {
+      setState(() {
+        _selectedFile = file;
+      });
+    }
   }
 
   @override
@@ -141,7 +189,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               },
             ),
           ),
-
+          if (_selectedFile != null) _buildFilePreview(),
           _buildMessageInput(),
         ],
       ),
@@ -154,6 +202,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       padding: const EdgeInsets.all(8.0),
       child: Row(
         children: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.attach_file),
+            onPressed: _pickFile,
+            color: primaryColor,
+          ),
           Expanded(
             child: TextField(
               controller: _messageController,
@@ -184,6 +237,39 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ),
     );
   }
+
+  Widget _buildFilePreview() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: Container(
+        padding: const EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12.0),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.insert_drive_file, color: Colors.grey[700]),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Text(
+                _selectedFile!.path.split('/').last,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                setState(() {
+                  _selectedFile = null;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // Widget para la burbuja de mensaje
@@ -201,12 +287,13 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isFile = message.type == 'file';
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 10.0),
       child: Column(
-        crossAxisAlignment: isMe
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: <Widget>[
           if (!isMe)
             Padding(
@@ -220,8 +307,6 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             ),
-
-          // Burbuja de texto
           Material(
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(15.0),
@@ -240,17 +325,62 @@ class _MessageBubble extends StatelessWidget {
                 vertical: 10.0,
                 horizontal: 15.0,
               ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  color: isMe ? Colors.white : textColor,
-                  fontSize: 15.0,
-                ),
-              ),
+              child: isFile
+                  ? InkWell(
+                      onTap: () async {
+                        if (message.fileUrl != null) {
+                          final Uri url = Uri.parse(message.fileUrl!);
+                          if (!await launchUrl(url)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('No se pudo abrir el archivo'),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.insert_drive_file,
+                                  color: isMe ? Colors.white : textColor),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ver archivo',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : textColor,
+                                  fontSize: 15.0,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (message.text.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                message.text,
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : textColor,
+                                  fontSize: 15.0,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    )
+                  : Text(
+                      message.text,
+                      style: TextStyle(
+                        color: isMe ? Colors.white : textColor,
+                        fontSize: 15.0,
+                      ),
+                    ),
             ),
           ),
-
-          // Hora del mensaje
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
             child: Text(
