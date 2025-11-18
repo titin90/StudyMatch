@@ -53,7 +53,8 @@ class StudyRoom {
           : null,
       rawData = doc.data() as Map<String, dynamic>;
 
-  String get name => '$courseCode: $topic';
+  String get name => topic;
+  
 }
 
 // Ejecuta la lógica de unión a la sala
@@ -1215,10 +1216,13 @@ class _StudyRoomCard extends StatelessWidget {
 
     final String displaySubtitle =
         (room.description != null && room.description!.trim().isNotEmpty)
-        ? (room.description!.length > 80
-              ? '${room.description!.substring(0, 80)}...'
+        ? (room.description!.length > 100
+              ? '${room.description!.substring(0, 100)}...'
               : room.description!)
         : room.topic;
+
+    // Determinar el lugar según modalidad
+    final String lugar = room.isOnline ? 'Online' : room.campus;
 
     final Function()? cardOnTap = () {
       _handleRoomAction(context, isMember);
@@ -1230,49 +1234,106 @@ class _StudyRoomCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: primaryColor,
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         onTap: cardOnTap,
-        title: Text(
-          room.name,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                room.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            // Código de carrera (arriba a la derecha)
+            if (room.courseCode != 'N/A' && room.courseCode.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  room.courseCode,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              // Mostrar descripción corta si existe, si no mostrar el tema
-              displaySubtitle,
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-            ),
             const SizedBox(height: 4),
+            // Descripción
+            Text(
+              displaySubtitle,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            // Capacidad | Lugar
             Row(
               children: [
-                // Conteo de Miembros (Número e icono) con capacidad
+                const Icon(Icons.people_alt, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
                 Text(
                   '${room.members.length}${room.capacity != null ? '/${room.capacity}' : ''}',
-                  style: const TextStyle(fontSize: 14, color: Colors.white),
-                ),
-                const Icon(Icons.people_alt, color: Colors.white, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
                   style: const TextStyle(
+                    fontSize: 13,
                     color: Colors.white,
-                    fontWeight: FontWeight.w300,
-                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  '|',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  room.isOnline ? Icons.wifi : Icons.location_on,
+                  color: Colors.white,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    lugar,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w300,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ],
         ),
-
         trailing: Icon(
           Icons.arrow_forward_ios_rounded,
           color: isMember ? const Color(0xFF4CAF50) : Colors.white,
-          size: 24,
+          size: 20,
         ),
       ),
     );
