@@ -213,7 +213,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
 
               ...selectedRamoDetails
-                  .take(5) // Mostrar solo los primeros 5
                   .map(
                     (ramo) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
