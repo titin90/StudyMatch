@@ -54,7 +54,6 @@ class StudyRoom {
       rawData = doc.data() as Map<String, dynamic>;
 
   String get name => topic;
-  
 }
 
 // Ejecuta la lógica de unión a la sala
@@ -473,6 +472,15 @@ class _HomeContentState extends State<_HomeContent> {
       } else if (ramosFiltrados.isNotEmpty) {
         roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
       }
+    } else if (_filterMode == 'my_rooms') {
+      // Mostrar solo salas en las que el usuario está inscrito
+      final userId = _auth.currentUser?.uid;
+      if (userId != null) {
+        roomsQuery = roomsQuery.where('members', arrayContains: userId);
+      } else {
+        // Usuario no autenticado: no devolver resultados
+        roomsQuery = roomsQuery.where('members', arrayContains: '__no_user__');
+      }
     }
     // Si el modo es 'all', no aplicamos filtro (muestra todas las salas)
 
@@ -614,6 +622,12 @@ class _HomeContentState extends State<_HomeContent> {
                   if (_filterMode == 'all') {
                     mensaje =
                         'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
+                  } else if (_filterMode == 'my_rooms' &&
+                      _auth.currentUser == null) {
+                    mensaje = 'Debes iniciar sesión para ver tus salas.';
+                  } else if (_filterMode == 'my_rooms') {
+                    mensaje =
+                        'No estás en ninguna sala.\nCrea una o únete a una.';
                   } else if (_userActiveCourses.isEmpty) {
                     mensaje =
                         'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
@@ -672,11 +686,47 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Filtro por campus
     if (_selectedCampus != null) {
-      filteredRooms = filteredRooms
-          .where((room) => room.campus == _selectedCampus)
-          .toList();
+      filteredRooms = filteredRooms.where((room) {
+        final campus = room.campus;
+        final selected = _selectedCampus!;
+        return campus == selected || campus.contains(selected);
+      }).toList();
     }
 
+    // Filtro por universidad: usamos los códigos de carrera conocidos para esa universidad
+    if (_selectedUniversity != null) {
+      final careerKeys =
+          _careersByUniversity[_selectedUniversity!]?.keys.toList() ?? [];
+      if (careerKeys.isNotEmpty) {
+        filteredRooms = filteredRooms.where((room) {
+          final code = room.courseCode;
+          for (final key in careerKeys) {
+            if (code.startsWith(key)) return true;
+          }
+          // fallback: intentar comparar por campus o por nombre de universidad en campos disponibles
+          final campusLower = room.campus.toLowerCase();
+          if (campusLower.contains(_selectedUniversity!.toLowerCase()))
+            return true;
+          final rawName = (room.rawData['university'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (rawName.isNotEmpty &&
+              rawName.contains(_selectedUniversity!.toLowerCase()))
+            return true;
+          return false;
+        }).toList();
+      } else {
+        // Si no hay códigos de carrera registrados, filtrar por campo campus/metadata
+        filteredRooms = filteredRooms.where((room) {
+          final campusLower = room.campus.toLowerCase();
+          return campusLower.contains(_selectedUniversity!.toLowerCase()) ||
+              (room.rawData['university'] ?? '')
+                  .toString()
+                  .toLowerCase()
+                  .contains(_selectedUniversity!.toLowerCase());
+        }).toList();
+      }
+    }
     // Filtro por carrera (busca en el courseCode)
     if (_selectedCareer != null) {
       filteredRooms = filteredRooms.where((room) {
@@ -712,6 +762,7 @@ class _HomeContentState extends State<_HomeContent> {
   // Verificar si hay filtros activos
   bool _hasActiveFilters() {
     return _filterMode == 'my_courses' ||
+        _filterMode == 'my_rooms' ||
         _selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos' ||
         _selectedUniversity != null ||
         _selectedCampus != null ||
@@ -725,6 +776,7 @@ class _HomeContentState extends State<_HomeContent> {
   int _getActiveFiltersCount() {
     int count = 0;
     if (_filterMode == 'my_courses') count++;
+    if (_filterMode == 'my_rooms') count++;
     if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos')
       count++;
     if (_selectedUniversity != null) count++;
@@ -806,6 +858,20 @@ class _HomeContentState extends State<_HomeContent> {
                             setState(() {
                               _filterMode = value!;
                               _selectedFilterRamo = 'Mostrar Todos';
+                            });
+                          },
+                    activeColor: primaryColor,
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('Mis salas'),
+                    value: 'my_rooms',
+                    groupValue: _filterMode,
+                    onChanged: _auth.currentUser == null
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _filterMode = value!;
+                              _selectedFilterRamo = null;
                             });
                           },
                     activeColor: primaryColor,
@@ -1256,10 +1322,7 @@ class _StudyRoomCard extends StatelessWidget {
             // Código de carrera (arriba a la derecha)
             if (room.courseCode != 'N/A' && room.courseCode.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(4),
@@ -1282,10 +1345,7 @@ class _StudyRoomCard extends StatelessWidget {
             // Descripción
             Text(
               displaySubtitle,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -1306,10 +1366,7 @@ class _StudyRoomCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Text(
                   '|',
-                  style: TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
                 const SizedBox(width: 8),
                 Icon(
