@@ -53,7 +53,7 @@ class StudyRoom {
           : null,
       rawData = doc.data() as Map<String, dynamic>;
 
-  String get name => '$courseCode: $topic';
+  String get name => topic;
 }
 
 // Ejecuta la lógica de unión a la sala
@@ -209,7 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     ),
-    const Center(child: Text('Pantalla de Notificaciones (Próximamente)')),
     const ProfileScreen(),
   ];
 
@@ -236,10 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     String title = 'StudyMatch';
-    if (_selectedIndex == 2) {
+    if (_selectedIndex == 1) {
       title = 'Mi Perfil';
-    } else if (_selectedIndex == 1) {
-      title = 'Notificaciones';
     } else if (_selectedIndex == 0) {
       title = 'StudyMatch';
     }
@@ -250,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [if (_selectedIndex == 2) _buildLogoutAction(context)],
+        actions: [if (_selectedIndex == 1) _buildLogoutAction(context)],
       ),
       body: _widgetOptions.elementAt(_selectedIndex),
       floatingActionButton: _selectedIndex == 0
@@ -270,10 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'StudyMatch'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notificaciones',
-          ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
         ],
         currentIndex: _selectedIndex,
@@ -479,15 +472,21 @@ class _HomeContentState extends State<_HomeContent> {
       } else if (ramosFiltrados.isNotEmpty) {
         roomsQuery = roomsQuery.where('courseCode', whereIn: ramosFiltrados);
       }
+    } else if (_filterMode == 'my_rooms') {
+      // Mostrar solo salas en las que el usuario está inscrito
+      final userId = _auth.currentUser?.uid;
+      if (userId != null) {
+        roomsQuery = roomsQuery.where('members', arrayContains: userId);
+      } else {
+        // Usuario no autenticado: no devolver resultados
+        roomsQuery = roomsQuery.where('members', arrayContains: '__no_user__');
+      }
     }
     // Si el modo es 'all', no aplicamos filtro (muestra todas las salas)
 
     // Aplicar filtro de modalidad
     if (_selectedModalidad != null) {
-      roomsQuery = roomsQuery.where(
-        'type',
-        isEqualTo: _selectedModalidad,
-      );
+      roomsQuery = roomsQuery.where('type', isEqualTo: _selectedModalidad);
     }
 
     return Scaffold(
@@ -512,7 +511,11 @@ class _HomeContentState extends State<_HomeContent> {
                 IconButton(
                   icon: Stack(
                     children: [
-                      const Icon(Icons.filter_list, color: primaryColor, size: 28),
+                      const Icon(
+                        Icons.filter_list,
+                        color: primaryColor,
+                        size: 28,
+                      ),
                       if (_hasActiveFilters())
                         Positioned(
                           right: 0,
@@ -546,7 +549,10 @@ class _HomeContentState extends State<_HomeContent> {
 
           // Buscador de texto
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -603,29 +609,35 @@ class _HomeContentState extends State<_HomeContent> {
                 // Obtener todas las salas
                 var rooms = snapshot.hasData
                     ? snapshot.data!.docs
-                        .map((doc) => StudyRoom.fromFirestore(doc))
-                        .toList()
+                          .map((doc) => StudyRoom.fromFirestore(doc))
+                          .toList()
                     : <StudyRoom>[];
 
                 // Aplicar filtros del lado del cliente
                 rooms = _applyClientSideFilters(rooms);
 
                 if (rooms.isEmpty) {
-                String mensaje;
+                  String mensaje;
 
-                if (_filterMode == 'all') {
-                  mensaje =
-                      'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
-                } else if (_userActiveCourses.isEmpty) {
-                  mensaje =
-                      'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
-                } else if (_selectedFilterRamo == 'Mostrar Todos') {
-                  mensaje =
-                      'No hay salas disponibles para tus ramos.\n¡Crea una!';
-                } else {
-                  mensaje =
-                      'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
-                }
+                  if (_filterMode == 'all') {
+                    mensaje =
+                        'No hay salas disponibles en este momento.\n¡Sé el primero en crear una!';
+                  } else if (_filterMode == 'my_rooms' &&
+                      _auth.currentUser == null) {
+                    mensaje = 'Debes iniciar sesión para ver tus salas.';
+                  } else if (_filterMode == 'my_rooms') {
+                    mensaje =
+                        'No estás en ninguna sala.\nCrea una o únete a una.';
+                  } else if (_userActiveCourses.isEmpty) {
+                    mensaje =
+                        'No tienes ramos inscritos.\nInscribe tus ramos en tu perfil para ver salas recomendadas.';
+                  } else if (_selectedFilterRamo == 'Mostrar Todos') {
+                    mensaje =
+                        'No hay salas disponibles para tus ramos.\n¡Crea una!';
+                  } else {
+                    mensaje =
+                        'No hay salas para el ramo "$_selectedFilterRamo".\n¡Crea una!';
+                  }
 
                   return Center(
                     child: Padding(
@@ -674,11 +686,47 @@ class _HomeContentState extends State<_HomeContent> {
 
     // Filtro por campus
     if (_selectedCampus != null) {
-      filteredRooms = filteredRooms
-          .where((room) => room.campus == _selectedCampus)
-          .toList();
+      filteredRooms = filteredRooms.where((room) {
+        final campus = room.campus;
+        final selected = _selectedCampus!;
+        return campus == selected || campus.contains(selected);
+      }).toList();
     }
 
+    // Filtro por universidad: usamos los códigos de carrera conocidos para esa universidad
+    if (_selectedUniversity != null) {
+      final careerKeys =
+          _careersByUniversity[_selectedUniversity!]?.keys.toList() ?? [];
+      if (careerKeys.isNotEmpty) {
+        filteredRooms = filteredRooms.where((room) {
+          final code = room.courseCode;
+          for (final key in careerKeys) {
+            if (code.startsWith(key)) return true;
+          }
+          // fallback: intentar comparar por campus o por nombre de universidad en campos disponibles
+          final campusLower = room.campus.toLowerCase();
+          if (campusLower.contains(_selectedUniversity!.toLowerCase()))
+            return true;
+          final rawName = (room.rawData['university'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (rawName.isNotEmpty &&
+              rawName.contains(_selectedUniversity!.toLowerCase()))
+            return true;
+          return false;
+        }).toList();
+      } else {
+        // Si no hay códigos de carrera registrados, filtrar por campo campus/metadata
+        filteredRooms = filteredRooms.where((room) {
+          final campusLower = room.campus.toLowerCase();
+          return campusLower.contains(_selectedUniversity!.toLowerCase()) ||
+              (room.rawData['university'] ?? '')
+                  .toString()
+                  .toLowerCase()
+                  .contains(_selectedUniversity!.toLowerCase());
+        }).toList();
+      }
+    }
     // Filtro por carrera (busca en el courseCode)
     if (_selectedCareer != null) {
       filteredRooms = filteredRooms.where((room) {
@@ -701,7 +749,8 @@ class _HomeContentState extends State<_HomeContent> {
       filteredRooms = filteredRooms.where((room) {
         final titleMatch = room.name.toLowerCase().contains(_searchText);
         final topicMatch = room.topic.toLowerCase().contains(_searchText);
-        final descriptionMatch = room.description != null &&
+        final descriptionMatch =
+            room.description != null &&
             room.description!.toLowerCase().contains(_searchText);
         return titleMatch || topicMatch || descriptionMatch;
       }).toList();
@@ -713,6 +762,7 @@ class _HomeContentState extends State<_HomeContent> {
   // Verificar si hay filtros activos
   bool _hasActiveFilters() {
     return _filterMode == 'my_courses' ||
+        _filterMode == 'my_rooms' ||
         _selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos' ||
         _selectedUniversity != null ||
         _selectedCampus != null ||
@@ -726,7 +776,9 @@ class _HomeContentState extends State<_HomeContent> {
   int _getActiveFiltersCount() {
     int count = 0;
     if (_filterMode == 'my_courses') count++;
-    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos') count++;
+    if (_filterMode == 'my_rooms') count++;
+    if (_selectedFilterRamo != null && _selectedFilterRamo != 'Mostrar Todos')
+      count++;
     if (_selectedUniversity != null) count++;
     if (_selectedCampus != null) count++;
     if (_selectedModalidad != null) count++;
@@ -735,8 +787,6 @@ class _HomeContentState extends State<_HomeContent> {
     if (_searchText.isNotEmpty) count++;
     return count;
   }
-
-
 
   // Drawer de filtros
   Widget _buildFilterDrawer() {
@@ -748,9 +798,7 @@ class _HomeContentState extends State<_HomeContent> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: primaryColor,
-              ),
+              decoration: const BoxDecoration(color: primaryColor),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -766,10 +814,7 @@ class _HomeContentState extends State<_HomeContent> {
                   ),
                   Text(
                     'Personaliza tu búsqueda',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ],
               ),
@@ -817,11 +862,26 @@ class _HomeContentState extends State<_HomeContent> {
                           },
                     activeColor: primaryColor,
                   ),
+                  RadioListTile<String>(
+                    title: const Text('Mis salas'),
+                    value: 'my_rooms',
+                    groupValue: _filterMode,
+                    onChanged: _auth.currentUser == null
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _filterMode = value!;
+                              _selectedFilterRamo = null;
+                            });
+                          },
+                    activeColor: primaryColor,
+                  ),
 
                   const Divider(height: 32),
 
                   // Filtro por ramo específico (solo si está en modo mis ramos)
-                  if (_filterMode == 'my_courses' && _userActiveCourses.isNotEmpty) ...[
+                  if (_filterMode == 'my_courses' &&
+                      _userActiveCourses.isNotEmpty) ...[
                     const Text(
                       'Ramo específico',
                       style: TextStyle(
@@ -841,30 +901,33 @@ class _HomeContentState extends State<_HomeContent> {
                         child: DropdownButton<String>(
                           value: _selectedFilterRamo,
                           isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                          icon: const Icon(
+                            Icons.arrow_drop_down,
+                            color: primaryColor,
+                          ),
                           onChanged: (String? newValue) {
                             setState(() {
                               _selectedFilterRamo = newValue;
                             });
                           },
-                          items: _userActiveCourses.map<DropdownMenuItem<String>>((
-                            String value,
-                          ) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(
-                                value == 'Mostrar Todos'
-                                    ? 'Todos mis ramos'
-                                    : _getRamoDisplayName(value),
-                                style: TextStyle(
-                                  fontWeight: value == 'Mostrar Todos'
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
+                          items: _userActiveCourses
+                              .map<DropdownMenuItem<String>>((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(
+                                    value == 'Mostrar Todos'
+                                        ? 'Todos mis ramos'
+                                        : _getRamoDisplayName(value),
+                                    style: TextStyle(
+                                      fontWeight: value == 'Mostrar Todos'
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              })
+                              .toList(),
                         ),
                       ),
                     ),
@@ -892,7 +955,10 @@ class _HomeContentState extends State<_HomeContent> {
                         value: _selectedUniversity,
                         hint: const Text('Todas las universidades'),
                         isExpanded: true,
-                        icon: const Icon(Icons.arrow_drop_down, color: primaryColor),
+                        icon: const Icon(
+                          Icons.arrow_drop_down,
+                          color: primaryColor,
+                        ),
                         onChanged: (String? newValue) {
                           setState(() {
                             _selectedUniversity = newValue;
@@ -977,7 +1043,9 @@ class _HomeContentState extends State<_HomeContent> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _selectedUniversity != null ? primaryColor : Colors.grey,
+                      color: _selectedUniversity != null
+                          ? primaryColor
+                          : Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1048,7 +1116,9 @@ class _HomeContentState extends State<_HomeContent> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: _selectedUniversity != null ? primaryColor : Colors.grey,
+                      color: _selectedUniversity != null
+                          ? primaryColor
+                          : Colors.grey,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1215,10 +1285,13 @@ class _StudyRoomCard extends StatelessWidget {
 
     final String displaySubtitle =
         (room.description != null && room.description!.trim().isNotEmpty)
-        ? (room.description!.length > 80
-              ? '${room.description!.substring(0, 80)}...'
+        ? (room.description!.length > 100
+              ? '${room.description!.substring(0, 100)}...'
               : room.description!)
         : room.topic;
+
+    // Determinar el lugar según modalidad
+    final String lugar = room.isOnline ? 'Online' : room.campus;
 
     final Function()? cardOnTap = () {
       _handleRoomAction(context, isMember);
@@ -1230,49 +1303,97 @@ class _StudyRoomCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: primaryColor,
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         onTap: cardOnTap,
-        title: Text(
-          room.name,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                room.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            // Código de carrera (arriba a la derecha)
+            if (room.courseCode != 'N/A' && room.courseCode.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  room.courseCode,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 4),
+            // Descripción
             Text(
-              // Mostrar descripción corta si existe, si no mostrar el tema
               displaySubtitle,
               style: const TextStyle(color: Colors.white70, fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
+            // Capacidad | Lugar
             Row(
               children: [
-                // Conteo de Miembros (Número e icono) con capacidad
+                const Icon(Icons.people_alt, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
                 Text(
                   '${room.members.length}${room.capacity != null ? '/${room.capacity}' : ''}',
-                  style: const TextStyle(fontSize: 14, color: Colors.white),
-                ),
-                const Icon(Icons.people_alt, color: Colors.white, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  '${room.isOnline ? 'Online' : 'Presencial'} en ${room.campus}',
                   style: const TextStyle(
+                    fontSize: 13,
                     color: Colors.white,
-                    fontWeight: FontWeight.w300,
-                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  '|',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  room.isOnline ? Icons.wifi : Icons.location_on,
+                  color: Colors.white,
+                  size: 16,
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    lugar,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w300,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ],
         ),
-
         trailing: Icon(
           Icons.arrow_forward_ios_rounded,
           color: isMember ? const Color(0xFF4CAF50) : Colors.white,
-          size: 24,
+          size: 20,
         ),
       ),
     );

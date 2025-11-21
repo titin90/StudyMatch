@@ -38,12 +38,49 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   }
 
   final List<String> _studyTypes = ['Online', 'Presencial'];
-  final List<String> _campuses = [
-    'Campus San Joaquín',
-    'Campus Casa Central',
-    'Campus Vitacura',
-    'No Definido',
-  ];
+  
+  // Mapa de universidades a nombres completos y sus campus
+  final Map<String, Map<String, dynamic>> _universityData = {
+    'USM': {
+      'name': 'Universidad Técnica Federico Santa María',
+      'campuses': [
+        'Campus Casa Central - Valparaíso',
+        'Campus San Joaquín - Santiago',
+        'Campus Vitacura - Santiago',
+        'Campus Concepción',
+      ],
+    },
+    'UC': {
+      'name': 'Pontificia Universidad Católica de Chile',
+      'campuses': [
+        'Campus San Joaquín',
+        'Campus Casa Central',
+        'Campus Oriente',
+        'Campus Villarrica',
+        'Campus Lo Contador',
+      ],
+    },
+    'UCHILE': {
+      'name': 'Universidad de Chile',
+      'campuses': [
+        'Campus Beauchef',
+        'Campus Juan Gómez Millas',
+        'Campus Andrés Bello',
+        'Campus Norte',
+        'Campus Sur',
+      ],
+    },
+    'USACH': {
+      'name': 'Universidad de Santiago de Chile',
+      'campuses': [
+        'Campus Central',
+        'Campus Estación Central',
+      ],
+    },
+  };
+  
+  // Campus disponibles según el ramo seleccionado
+  List<String> _availableCampuses = [];
 
   @override
   void initState() {
@@ -59,21 +96,18 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final rootDoc = await _firestore.collection('users').doc(userId).get();
-      final rootData = rootDoc.data();
-
       final ramosDocPath = _getRamosDocPath(userId);
       final ramosDoc = await _firestore.doc(ramosDocPath).get();
       final ramosData = ramosDoc.data();
 
       if (mounted) {
         setState(() {
-          _campus = rootData?['campus'] ?? 'Campus San Joaquín';
           _userActiveCourses =
               (ramosData?['current_ramos'] as List<dynamic>?)
                   ?.cast<String>()
                   .toList() ??
               [];
+          // No establecer campus aquí, se hará cuando se seleccione un ramo
         });
       }
     } catch (e) {
@@ -287,13 +321,15 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               _buildDropdownField(
                 label: 'Campus/Ubicación',
                 value: _campus,
-                items: _campuses,
+                items: _availableCampuses.isEmpty ? ['No Definido'] : _availableCampuses,
                 onChanged: (String? newValue) {
                   setState(() {
                     _campus = newValue!;
                   });
                 },
-                hint: 'Selecciona tu campus',
+                hint: _selectedCourseCode == null 
+                    ? 'Primero selecciona un ramo' 
+                    : 'Selecciona tu campus',
               ),
               const SizedBox(height: 16),
 
@@ -447,6 +483,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
           onChanged: (value) {
             setState(() {
               _selectedCourseCode = value;
+              _updateCampusOptions();
             });
           },
           validator: (value) => value == null ? 'Selecciona un ramo' : null,
@@ -486,6 +523,39 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         return DropdownMenuItem<String>(value: item, child: Text(item));
       }).toList(),
     );
+  }
+
+  // Actualiza las opciones de campus según el ramo seleccionado
+  void _updateCampusOptions() {
+    if (_selectedCourseCode == null) {
+      _availableCampuses = [];
+      _campus = 'Campus San Joaquín';
+      return;
+    }
+
+    // Buscar el ramo en allRamos para obtener su universityId
+    final selectedRamo = allRamos.firstWhereOrNull(
+      (r) => r.code == _selectedCourseCode,
+    );
+
+    if (selectedRamo != null) {
+      final universityId = selectedRamo.universityId;
+      final universityInfo = _universityData[universityId];
+      
+      if (universityInfo != null) {
+        _availableCampuses = List<String>.from(universityInfo['campuses']);
+        // Establecer el primer campus como predeterminado si el actual no está disponible
+        if (!_availableCampuses.contains(_campus) && _availableCampuses.isNotEmpty) {
+          _campus = _availableCampuses.first;
+        }
+      } else {
+        _availableCampuses = [];
+        _campus = 'No Definido';
+      }
+    } else {
+      _availableCampuses = [];
+      _campus = 'No Definido';
+    }
   }
 
   // Helper para Selector de Fecha/Hora 
