@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../constants/colors.dart';
 import '../ramo_data.dart';
+import '../services/notification_service.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'create_room_screen.dart';
@@ -108,6 +109,9 @@ Future<void> _performJoin(
         .update({
           'members': FieldValue.arrayUnion([userId]),
         });
+
+    // Suscribirse a notificaciones de esta sala
+    await NotificationService().subscribeToRoom(roomId);
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

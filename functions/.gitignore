@@ -1,0 +1,28 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Flutter/Dart
+**/*.g.dart
+**/*.freezed.dart
+**/*.gr.dart
+**/generated_plugin_registrant.dart
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+
+# Firebase
+**/google-services.json  # 
+**/GoogleService-Info.plist
+firebase-debug.log
+.firebase/
+
+# Functions
+functions/node_modules/
+functions/.runtimeconfig.json
+functions/lib/

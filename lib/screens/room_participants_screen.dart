@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../constants/colors.dart';
+import '../services/notification_service.dart';
 import 'home_screen.dart';
 import 'user_profile.dart';
 import '../widgets/local_or_network_image.dart';
@@ -183,6 +184,9 @@ class _RoomParticipantsScreenState extends State<RoomParticipantsScreen> {
         'members': FieldValue.arrayRemove([userId]),
       });
 
+      // Desuscribirse de las notificaciones de esta sala
+      await NotificationService().unsubscribeFromRoom(widget.room.id);
+
       setState(() {
         widget.room.members.remove(userId);
         _usersData.remove(userId);
@@ -257,6 +261,11 @@ class _RoomParticipantsScreenState extends State<RoomParticipantsScreen> {
       await _firestore.collection('study_rooms').doc(widget.room.id).update({
         'members': FieldValue.arrayRemove([userId]),
       });
+
+      // Desuscribir al usuario eliminado de las notificaciones
+      // (nota: esto no afectará al dispositivo del usuario eliminado, 
+      // pero es buena práctica limpiar)
+
       setState(() {
         widget.room.members.remove(userId);
         _usersData.remove(userId);

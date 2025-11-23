@@ -4,10 +4,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'constants/colors.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // Inicializar el servicio de notificaciones
+  await NotificationService().initialize();
+  
   runApp(const StudyMatchApp());
 }
 
