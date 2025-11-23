@@ -224,3 +224,99 @@ exports.onNewMessage = onDocumentCreated('study_rooms/{roomId}/messages/{message
     { roomId: roomId, type: 'new_message', messageType: messageType }
   );
 });
+
+/**
+ * Notifica a usuarios que tienen inscrito un ramo cuando se crea una sala de ese ramo
+ */
+exports.onRoomCreated = onDocumentCreated('study_rooms/{roomId}', async (event) => {
+  const roomId = event.params.roomId;
+  const roomData = event.data.data();
+  const courseCode = roomData.courseCode;
+  const roomName = roomData.topic || 'una sala';
+  const creatorId = roomData.creatorId;
+  const campus = roomData.campus || 'Online';
+  const isOnline = roomData.type === 'Online';
+
+  // Si no tiene código de ramo, no notificar
+  if (!courseCode || courseCode === 'N/A' || courseCode === '') {
+    console.log('Sala sin código de ramo, no se envían notificaciones');
+    return;
+  }
+
+  console.log(`Nueva sala creada: ${roomName} (${courseCode})`);
+
+  try {
+    // Obtener todos los usuarios
+    const usersSnapshot = await db.collection('users').get();
+    const notificationsToSend = [];
+
+    // Definir el appId (mismo que en Flutter)
+    const appId = 'default-app-id';
+
+    for (const userDoc of usersSnapshot.docs) {
+      const userId = userDoc.id;
+
+      // No notificar al creador
+      if (userId === creatorId) continue;
+
+      // Verificar si el usuario no tiene token FCM
+      const fcmToken = userDoc.data().fcmToken;
+      if (!fcmToken) continue;
+
+      // Obtener los ramos del usuario desde artifacts
+      const ramosPath = `artifacts/${appId}/users/${userId}/profile_data/data`;
+      const ramosDoc = await db.doc(ramosPath).get();
+
+      if (!ramosDoc.exists) continue;
+
+      const currentRamos = ramosDoc.data().current_ramos || [];
+
+      // Verificar si el usuario tiene inscrito este ramo
+      if (currentRamos.includes(courseCode)) {
+        const location = isOnline ? '🌐 Online' : `📍 ${campus}`;
+        const title = `🆕 Nueva sala de ${courseCode}`;
+        const body = `"${roomName}" • ${location}`;
+
+        notificationsToSend.push({
+          userId: userId,
+          token: fcmToken,
+          title: title,
+          body: body,
+        });
+      }
+    }
+
+    // Enviar notificaciones
+    if (notificationsToSend.length === 0) {
+      console.log('No hay usuarios con este ramo inscrito');
+      return;
+    }
+
+    console.log(`Enviando notificaciones a ${notificationsToSend.length} usuarios`);
+
+    // Enviar en lotes para mejor performance
+    const messages = notificationsToSend.map(notif => ({
+      notification: {
+        title: notif.title,
+        body: notif.body,
+      },
+      data: {
+        roomId: roomId,
+        type: 'new_room',
+        courseCode: courseCode,
+        roomName: roomName,
+      },
+      token: notif.token,
+    }));
+
+    // Enviar todas las notificaciones
+    const response = await messaging.sendEach(messages);
+    console.log(`${response.successCount} notificaciones enviadas exitosamente`);
+    if (response.failureCount > 0) {
+      console.log(`${response.failureCount} notificaciones fallaron`);
+    }
+
+  } catch (error) {
+    console.error('Error al notificar creación de sala:', error);
+  }
+});
