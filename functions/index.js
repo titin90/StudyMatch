@@ -1,4 +1,5 @@
 const {onDocumentUpdated, onDocumentCreated} = require('firebase-functions/v2/firestore');
+const {onSchedule} = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
@@ -318,5 +319,153 @@ exports.onRoomCreated = onDocumentCreated('study_rooms/{roomId}', async (event) 
 
   } catch (error) {
     console.error('Error al notificar creación de sala:', error);
+  }
+});
+
+/**
+ * Función programada que se ejecuta cada 5 minutos para verificar 
+ * si hay salas próximas a comenzar (30 minutos antes)
+ */
+exports.checkUpcomingRooms = onSchedule('every 5 minutes', async (event) => {
+  console.log('Verificando salas próximas a comenzar...');
+  
+  try {
+    const now = admin.firestore.Timestamp.now();
+    const nowDate = now.toDate();
+    
+    // Calculamos el rango: desde 30 minutos en el futuro hasta 35 minutos
+    // (para cubrir la ventana de 5 minutos que se ejecuta esta función)
+    const startRange = new Date(nowDate.getTime() + 30 * 60000); // +30 min
+    const endRange = new Date(nowDate.getTime() + 35 * 60000);   // +35 min
+    
+    const startTimestamp = admin.firestore.Timestamp.fromDate(startRange);
+    const endTimestamp = admin.firestore.Timestamp.fromDate(endRange);
+    
+    console.log(`Buscando salas entre ${startRange.toISOString()} y ${endRange.toISOString()}`);
+    
+    // Buscar salas cuyo scheduledTime esté en el rango
+    const roomsSnapshot = await db.collection('study_rooms')
+      .where('scheduledTime', '>=', startTimestamp)
+      .where('scheduledTime', '<=', endTimestamp)
+      .get();
+    
+    if (roomsSnapshot.empty) {
+      console.log('No hay salas próximas a comenzar');
+      return;
+    }
+    
+    console.log(`Encontradas ${roomsSnapshot.size} salas próximas a comenzar`);
+    
+    // Procesar cada sala
+    for (const roomDoc of roomsSnapshot.docs) {
+      const roomId = roomDoc.id;
+      const roomData = roomDoc.data();
+      const roomName = roomData.topic || 'una sala';
+      const members = roomData.members || [];
+      const scheduledTime = roomData.scheduledTime.toDate();
+      const isOnline = roomData.type === 'Online';
+      const campus = roomData.campus || 'Online';
+      
+      // Verificar si ya se envió notificación para esta sala
+      // (para evitar duplicados en ejecuciones consecutivas)
+      const notificationSent = roomData.reminderSent || false;
+      if (notificationSent) {
+        console.log(`Sala ${roomId} ya tiene notificación enviada`);
+        continue;
+      }
+      
+      console.log(`Procesando sala: ${roomName} (${members.length} miembros)`);
+      
+      // Formatear la hora
+      const hours = scheduledTime.getHours().toString().padStart(2, '0');
+      const minutes = scheduledTime.getMinutes().toString().padStart(2, '0');
+      const timeStr = `${hours}:${minutes}`;
+      
+      // Obtener tokens de todos los miembros
+      const memberTokens = [];
+      for (const memberId of members) {
+        try {
+          const userDoc = await db.collection('users').doc(memberId).get();
+          if (userDoc.exists) {
+            const fcmToken = userDoc.data().fcmToken;
+            if (fcmToken) {
+              memberTokens.push({
+                userId: memberId,
+                token: fcmToken,
+                name: userDoc.data().name || 'Usuario',
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error obteniendo usuario ${memberId}:`, error);
+        }
+      }
+      
+      if (memberTokens.length === 0) {
+        console.log(`Sala ${roomId} no tiene miembros con tokens FCM`);
+        continue;
+      }
+      
+      // Preparar notificaciones
+      const location = isOnline ? '🌐 Online' : `📍 ${campus}`;
+      const title = `⏰ Recordatorio de sesión`;
+      const body = `"${roomName}" comienza en 30 minutos • ${timeStr} • ${location}`;
+      
+      const messages = memberTokens.map(member => ({
+        notification: {
+          title: title,
+          body: body,
+        },
+        data: {
+          roomId: roomId,
+          type: 'room_reminder',
+          roomName: roomName,
+          scheduledTime: scheduledTime.toISOString(),
+        },
+        token: member.token,
+      }));
+      
+      // Enviar notificaciones
+      const response = await messaging.sendEach(messages);
+      console.log(`Sala ${roomId}: ${response.successCount} notificaciones enviadas, ${response.failureCount} fallidas`);
+      
+      // Marcar como notificación enviada para evitar duplicados
+      await db.collection('study_rooms').doc(roomId).update({
+        reminderSent: true,
+      });
+    }
+    
+    console.log('Verificación de salas completada');
+    
+  } catch (error) {
+    console.error('Error en verificación de salas próximas:', error);
+  }
+});
+
+/**
+ * Resetea el flag reminderSent cuando se actualiza la hora de una sala
+ * para que se pueda enviar un nuevo recordatorio
+ */
+exports.onRoomScheduleUpdated = onDocumentUpdated('study_rooms/{roomId}', async (event) => {
+  const beforeData = event.data.before.data();
+  const afterData = event.data.after.data();
+  
+  // Verificar si se actualizó scheduledTime
+  const beforeTime = beforeData.scheduledTime;
+  const afterTime = afterData.scheduledTime;
+  
+  if (!beforeTime || !afterTime) return;
+  
+  // Comparar timestamps
+  const beforeMillis = beforeTime.toMillis();
+  const afterMillis = afterTime.toMillis();
+  
+  // Si la hora cambió, resetear el flag de recordatorio
+  if (beforeMillis !== afterMillis) {
+    console.log(`Hora de sala ${event.params.roomId} actualizada, reseteando reminderSent`);
+    
+    await event.data.after.ref.update({
+      reminderSent: false,
+    });
   }
 });
