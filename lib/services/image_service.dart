@@ -15,8 +15,8 @@ class ImageService {
   final ImagePicker _picker = ImagePicker();
 
   /// Obtiene la referencia de Firebase Storage para la imagen de perfil
-  Reference _getProfileImageRef(String userId) {
-    return _storage.ref().child('profile_images/$userId.jpg');
+  Reference _getProfileImageRef(String userId, String fileName) {
+    return _storage.ref().child('profile_images/$userId/$fileName');
   }
 
   /// Selecciona una imagen de la galería
@@ -63,14 +63,18 @@ class ImageService {
   /// Retorna la URL de descarga o null si hay error
   Future<String?> uploadProfileImage(File imageFile, String userId) async {
     try {
+      // Obtener extensión del archivo
+      final String extension = imageFile.path.split('.').last.toLowerCase();
+      final String fileName = 'profile.$extension';
+      
       // Obtener la referencia de Storage
-      final Reference storageRef = _getProfileImageRef(userId);
+      final Reference storageRef = _getProfileImageRef(userId, fileName);
       
       // Subir el archivo a Firebase Storage
       final UploadTask uploadTask = storageRef.putFile(
         imageFile,
         SettableMetadata(
-          contentType: 'image/jpeg',
+          contentType: 'image/$extension',
           customMetadata: {
             'userId': userId,
             'uploadedAt': DateTime.now().toIso8601String(),
@@ -90,7 +94,6 @@ class ImageService {
         'profileImageUpdatedAt': FieldValue.serverTimestamp(),
       });
 
-      debugPrint('✅ Imagen subida a Firebase Storage: $downloadUrl');
       return downloadUrl;
     } catch (e) {
       debugPrint('❌ Error al subir imagen a Firebase Storage: $e');
@@ -101,15 +104,17 @@ class ImageService {
   /// Elimina la imagen de perfil de Firebase Storage y Firestore
   Future<bool> deleteProfileImage(String userId) async {
     try {
-      // Eliminar archivo de Firebase Storage
-      final Reference storageRef = _getProfileImageRef(userId);
+      // Intentar eliminar diferentes extensiones posibles
+      final extensions = ['jpg', 'jpeg', 'png', 'webp'];
       
-      try {
-        await storageRef.delete();
-        debugPrint('✅ Imagen eliminada de Firebase Storage');
-      } catch (storageError) {
-        // Si el archivo no existe en Storage, continuar de todas formas
-        debugPrint('⚠️ Error al eliminar de Storage (puede que no exista): $storageError');
+      for (final ext in extensions) {
+        try {
+          final Reference storageRef = _getProfileImageRef(userId, 'profile.$ext');
+          await storageRef.delete();
+          break;
+        } catch (storageError) {
+          continue;
+        }
       }
 
       // Actualizar Firestore
@@ -118,7 +123,6 @@ class ImageService {
         'profileImageUpdatedAt': FieldValue.serverTimestamp(),
       });
 
-      debugPrint('✅ Referencia eliminada de Firestore');
       return true;
     } catch (e) {
       debugPrint('❌ Error al eliminar imagen: $e');

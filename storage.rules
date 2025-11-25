@@ -5,7 +5,7 @@ service firebase.storage {
   match /b/{bucket}/o {
     
     // Reglas para imágenes de perfil
-    match /profile_images/{userId}.jpg {
+    match /profile_images/{userId}/{fileName} {
       // Permitir lectura a todos los usuarios autenticados
       allow read: if request.auth != null;
       
